@@ -73,6 +73,7 @@ class Marinos_Chatbot_Admin {
             'marinos_chatbot_cta_visibility'   => 'sanitize_text_field',
             // Karşılama Akışı
             'marinos_chatbot_auto_open'        => 'sanitize_text_field',
+            'marinos_chatbot_auto_open_stop_after_close' => 'sanitize_text_field',
             'marinos_chatbot_greeting_delay'   => 'absint',
             'marinos_chatbot_typing_duration'  => 'absint',
             'marinos_chatbot_pulse_enabled'    => 'sanitize_text_field',
@@ -128,6 +129,7 @@ class Marinos_Chatbot_Admin {
         $cta_visibility   = get_option( 'marinos_chatbot_cta_visibility', 'always' );
         // Karşılama
         $auto_open        = get_option( 'marinos_chatbot_auto_open', '1' );
+        $auto_open_stop   = get_option( 'marinos_chatbot_auto_open_stop_after_close', '1' );
         $greeting_delay   = get_option( 'marinos_chatbot_greeting_delay', 1 );
         $typing_duration  = get_option( 'marinos_chatbot_typing_duration', 1200 );
         $pulse_enabled    = get_option( 'marinos_chatbot_pulse_enabled', '1' );
@@ -244,6 +246,14 @@ class Marinos_Chatbot_Admin {
                                 <option value="1" <?php selected($auto_open,'1'); ?>>Evet — Sayfa açılınca otomatik aç</option>
                                 <option value="0" <?php selected($auto_open,'0'); ?>>Hayır — Ziyaretçi tıklayana kadar bekle</option>
                             </select>
+                        </div>
+                        <div class="mc-field">
+                            <label>Kapatınca Yeniden Otomatik Açma</label>
+                            <select name="marinos_chatbot_auto_open_stop_after_close">
+                                <option value="1" <?php selected($auto_open_stop,'1'); ?>>Aktif — Kullanıcı kapatınca tekrar otomatik açma</option>
+                                <option value="0" <?php selected($auto_open_stop,'0'); ?>>Pasif — Kapatılsa da sonraki girişte otomatik aç</option>
+                            </select>
+                            <p class="desc">Aktifken kullanıcı chat penceresini kapatırsa bir daha otomatik açılmaz, sadece altta online ikon olarak kalır.</p>
                         </div>
                         <div class="mc-field">
                             <label>Pulse Efekti</label>

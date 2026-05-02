@@ -3,6 +3,7 @@
 
     var cfg            = window.marinosChatbot || {};
     var SK             = cfg.session_key || 'mc_session';  // localStorage anahtarı
+    var AO_KEY         = SK + '_auto_open_dismissed';
     var isOpen         = false;
     var isWaiting      = false;
     var welcomed       = false;
@@ -47,6 +48,7 @@
     var sessionId = saved ? saved.sessionId : ('mc_' + Math.random().toString(36).substr(2,12) + '_' + Date.now());
     var history   = saved ? (saved.history || []) : [];
     var savedMsgs = saved ? (saved.messages || []) : [];
+    var autoOpenDismissed = hasAutoOpenDismissed();
 
     // =============================================
     // DOM
@@ -90,7 +92,7 @@
         });
         // Önceki konuşma varsa chatı açık başlat
         openChat(true); // silent=true, yazıyor animasyonu olmasın
-    } else if (cfg.auto_open === '1') {
+    } else if (cfg.auto_open === '1' && !(cfg.auto_open_once_after_close === '1' && autoOpenDismissed)) {
         // Önceki konuşma yok, ayara göre otomatik aç
         var delay = (parseInt(cfg.greeting_delay) || 1) * 1000;
         setTimeout(function () { openChat(false); }, delay);
@@ -138,6 +140,9 @@
         $('#mc-icon-open, #mc-avatar-img-toggle').show();
         $('#mc-icon-close, #mc-icon-close-img').hide();
         clearInactivityTimer();
+        if (cfg.auto_open_once_after_close === '1') {
+            setAutoOpenDismissed(true);
+        }
     }
 
     $('#marinos-chat-toggle').on('click', function () {
@@ -311,6 +316,24 @@
         });
 
         return normalized;
+    }
+
+    function hasAutoOpenDismissed() {
+        try {
+            return localStorage.getItem(AO_KEY) === '1';
+        } catch(e) {
+            return false;
+        }
+    }
+
+    function setAutoOpenDismissed(value) {
+        try {
+            if (value) {
+                localStorage.setItem(AO_KEY, '1');
+            } else {
+                localStorage.removeItem(AO_KEY);
+            }
+        } catch(e) {}
     }
 
 })(jQuery);

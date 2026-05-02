@@ -3,7 +3,7 @@
  * Plugin Name: Marinos Chatbot
  * Plugin URI:  https://marinosajans.com.tr
  * Description: Gemini API destekli, özelleştirilebilir yapay zeka chatbot. Marinos Ajans.
- * Version:     1.1.1
+ * Version:     1.1.2
  * Author:      Marinos Ajans
  * Author URI:  https://marinosajans.com.tr
  * License:     GPL2
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'MARINOS_CHATBOT_VERSION', '1.1.1' );
+define( 'MARINOS_CHATBOT_VERSION', '1.1.2' );
 define( 'MARINOS_CHATBOT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MARINOS_CHATBOT_URL',  plugin_dir_url( __FILE__ ) );
 

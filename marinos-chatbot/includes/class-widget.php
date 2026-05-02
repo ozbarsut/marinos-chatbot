@@ -24,6 +24,7 @@ class Marinos_Chatbot_Widget {
             'phone'           => get_option( 'marinos_chatbot_phone_number', '' ),
             'page_url'        => get_permalink() ?: home_url( $_SERVER['REQUEST_URI'] ),
             'auto_open'       => get_option( 'marinos_chatbot_auto_open', '1' ),
+            'auto_open_once_after_close' => get_option( 'marinos_chatbot_auto_open_stop_after_close', '1' ),
             'greeting_delay'  => (int) get_option( 'marinos_chatbot_greeting_delay', 1 ),
             'typing_duration' => (int) get_option( 'marinos_chatbot_typing_duration', 1200 ),
             'pulse_enabled'   => get_option( 'marinos_chatbot_pulse_enabled', '1' ),
