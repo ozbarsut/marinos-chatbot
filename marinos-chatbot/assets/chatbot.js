@@ -90,8 +90,10 @@
                 renderUserMsg(m.text);
             }
         });
-        // Önceki konuşma varsa chatı açık başlat
-        openChat(true); // silent=true, yazıyor animasyonu olmasın
+        // Önceki konuşma varsa chatı açık başlat (kullanıcı daha önce kapatmadıysa)
+        if (!(cfg.auto_open_once_after_close === '1' && autoOpenDismissed)) {
+            openChat(true); // silent=true, yazıyor animasyonu olmasın
+        }
     } else if (cfg.auto_open === '1' && !(cfg.auto_open_once_after_close === '1' && autoOpenDismissed)) {
         // Önceki konuşma yok, ayara göre otomatik aç
         var delay = (parseInt(cfg.greeting_delay) || 1) * 1000;
