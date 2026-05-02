@@ -20,9 +20,9 @@ class Marinos_Chatbot_Api {
             wp_send_json_error( 'Geçersiz istek.' );
         }
 
-        $client_key    = get_option( 'marinos_chatbot_api_key', '' );
-        $model_name    = $this->get_model_name();
-        $system_prompt = $this->build_runtime_prompt( get_option( 'marinos_chatbot_system_prompt', '' ) );
+        $client_key  = get_option( 'marinos_chatbot_api_key', '' );
+        $model_name  = $this->get_model_name();
+        $base_prompt = get_option( 'marinos_chatbot_system_prompt', '' );
 
         if ( empty( $client_key ) ) {
             wp_send_json_error( 'API anahtarı tanımlanmamış.' );
@@ -44,6 +44,9 @@ class Marinos_Chatbot_Api {
             }
         }
         $history_clean = $this->normalize_history( $history_clean );
+        $is_passenger_count_step = $this->is_passenger_count_step( $history_clean );
+        $prepared_user_msg = $this->prepare_user_message( $user_msg, $is_passenger_count_step );
+        $system_prompt = $this->build_runtime_prompt( $base_prompt, $is_passenger_count_step );
 
         // Marinos API proxy'sine istek at
         $response = wp_remote_post(
@@ -54,7 +57,7 @@ class Marinos_Chatbot_Api {
                     'client_key'    => $client_key,
                     'model'         => $model_name,
                     'model_name'    => $model_name,
-                    'message'       => $user_msg,
+                    'message'       => $prepared_user_msg,
                     'history'       => $history_clean,
                     'system_prompt' => $system_prompt,
                 ]),
@@ -79,6 +82,7 @@ class Marinos_Chatbot_Api {
         // WhatsApp tetikleyici
         $whatsapp_trigger = ( strpos( strtolower( $reply ), 'whatsapp_yonlendir' ) !== false );
         $clean_reply      = trim( str_ireplace( 'whatsapp_yonlendir', '', $reply ) );
+        $clean_reply      = $this->repair_incomplete_reply( $clean_reply );
 
         // Debounce e-posta planla
         $this->schedule_email( $session_id, $page_url, $ip );
@@ -109,7 +113,7 @@ class Marinos_Chatbot_Api {
         return in_array( $model, $allowed, true ) ? $model : 'gemini-3-flash';
     }
 
-    private function build_runtime_prompt( $base_prompt ) {
+    private function build_runtime_prompt( $base_prompt, $is_passenger_count_step = false ) {
         $base_prompt = trim( (string) $base_prompt );
         $guardrails = "Konusmanin dilini kullanicidan algila ve ayni dilde devam et.\n"
             . "Rezervasyon akisini yonetirken her mesajdan once eldeki bilgileri kontrol et; daha once verilen bilgiyi tekrar sorma.\n"
@@ -117,7 +121,14 @@ class Marinos_Chatbot_Api {
             . "Eksik alanlari tek tek, en fazla 1-2 soru ile iste; kullaniciyi uzun soru listesine bogma.\n"
             . "Her adimda kisa bir ozet ver: bilinenler + hala eksik olanlar.\n"
             . "Tum alanlar tamamlaninca net rezervasyon ozeti ver ve onay iste.\n"
-            . "Ayni soruyu tekrar sormaktan kacın; zorunlu tekrar gerekirse nedenini tek cumlede acikla.";
+            . "Ayni soruyu tekrar sormaktan kacin; zorunlu tekrar gerekirse nedenini tek cumlede acikla.\n"
+            . "Yolcu sayisi adiminda 11,22,33,44,55,66,77,88,99 degerlerini otomatik olarak 1,2,3,4,5,6,7,8,9 olarak kabul et.\n"
+            . "Yolcu sayisi 9'dan buyukse maksimum 9 kisilik arac oldugunu belirt.\n"
+            . "Cevaplari asla yarim birakma; cumlenin ortasinda kesme ve eksik baglacla bitirme.";
+
+        if ( $is_passenger_count_step ) {
+            $guardrails .= "\nSu anda yolcu sayisi adimindasin; sadece bu adima uygun yanit ver.";
+        }
 
         return $base_prompt === '' ? $guardrails : $base_prompt . "\n\n" . $guardrails;
     }
@@ -154,5 +165,88 @@ class Marinos_Chatbot_Api {
             return mb_strtolower( $text, 'UTF-8' );
         }
         return strtolower( $text );
+    }
+
+    private function is_passenger_count_step( $history ) {
+        if ( empty( $history ) || ! is_array( $history ) ) {
+            return false;
+        }
+
+        $keywords = [
+            'kac kisi',
+            'kaç kişi',
+            'yolcu sayisi',
+            'yolcu sayısı',
+            'how many passenger',
+            'how many people',
+            'passenger count',
+            'how many guests',
+            'wie viele personen',
+            'anzahl der personen',
+            'сколько пассажиров',
+            'сколько человек',
+        ];
+
+        for ( $i = count( $history ) - 1; $i >= 0; $i-- ) {
+            if ( $history[ $i ]['role'] !== 'model' || empty( $history[ $i ]['text'] ) ) {
+                continue;
+            }
+
+            $text = $this->normalize_text( $history[ $i ]['text'] );
+            foreach ( $keywords as $keyword ) {
+                if ( strpos( $text, $keyword ) !== false ) {
+                    return true;
+                }
+            }
+            break;
+        }
+
+        return false;
+    }
+
+    private function prepare_user_message( $user_msg, $is_passenger_count_step ) {
+        $user_msg = trim( (string) $user_msg );
+        if ( ! $is_passenger_count_step || $user_msg === '' ) {
+            return $user_msg;
+        }
+
+        $normalized = preg_replace_callback(
+            '/\b([1-9])\1\b/u',
+            function( $matches ) {
+                return $matches[1];
+            },
+            $user_msg
+        );
+
+        return trim( (string) $normalized );
+    }
+
+    private function repair_incomplete_reply( $reply ) {
+        $reply = trim( (string) $reply );
+        if ( $reply === '' ) {
+            return $reply;
+        }
+
+        if ( preg_match( '/\botel ad[ıi]n[ıi]\s+veya\s*$/iu', $reply ) ) {
+            return 'Otel adini veya tam bolgesini yazar misiniz?';
+        }
+        if ( preg_match( '/\bhotel name or\s*$/iu', $reply ) ) {
+            return 'Please share your hotel name or exact area.';
+        }
+        if ( preg_match( '/\bhotelname oder\s*$/iu', $reply ) ) {
+            return 'Bitte teilen Sie den Hotelnamen oder die genaue Region mit.';
+        }
+        if ( preg_match( '/\bназвание отеля или\s*$/iu', $reply ) ) {
+            return 'Pozhaluysta, ukazhite nazvanie otyelya ili tochnyy rayon.';
+        }
+
+        if ( preg_match( '/\b(veya|or|oder|или)\s*$/iu', $reply ) ) {
+            $reply = trim( preg_replace( '/\b(veya|or|oder|или)\s*$/iu', '', $reply ) );
+        }
+        if ( $reply !== '' && ! preg_match( '/[.!?]\s*$/u', $reply ) ) {
+            $reply .= '.';
+        }
+
+        return $reply;
     }
 }
