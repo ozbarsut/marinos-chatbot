@@ -4,6 +4,7 @@
     var cfg            = window.marinosChatbot || {};
     var SK             = cfg.session_key || 'mc_session';  // localStorage anahtarı
     var AO_KEY         = SK + '_auto_open_dismissed';
+    var SESSION_TTL_MS = 5 * 60 * 1000; // 5 dakika
     var isOpen         = false;
     var isWaiting      = false;
     var welcomed       = false;
@@ -19,9 +20,10 @@
             var raw = localStorage.getItem(SK);
             if (!raw) return null;
             var data = JSON.parse(raw);
-            // 24 saatten eski ise temizle
-            if (!data.ts || (Date.now() - data.ts) > 86400000) {
+            // 5 dakikadan eski ise temizle
+            if (!data.ts || (Date.now() - data.ts) > SESSION_TTL_MS) {
                 localStorage.removeItem(SK);
+                localStorage.removeItem(AO_KEY);
                 return null;
             }
             return data;
