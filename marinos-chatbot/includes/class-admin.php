@@ -8,6 +8,7 @@ class Marinos_Chatbot_Admin {
         add_action( 'admin_post_marinos_test_email',      [ $this, 'send_test_email' ] );
         add_action( 'admin_post_marinos_test_whatsapp',   [ $this, 'send_test_whatsapp' ] );
         add_action( 'admin_post_marinos_delete_session',  [ $this, 'delete_session' ] );
+        add_action( 'admin_post_marinos_bulk_delete_sessions', [ $this, 'bulk_delete_sessions' ] );
         add_action( 'admin_init',    [ $this, 'register_settings' ] );
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
     }
@@ -19,6 +20,36 @@ class Marinos_Chatbot_Admin {
         global $wpdb;
         $wpdb->delete( $wpdb->prefix . 'marinos_chatbot_logs', [ 'session_id' => $session_id ], [ '%s' ] );
         wp_redirect( admin_url( 'admin.php?page=marinos-chatbot-logs&deleted=1' ) );
+        exit;
+    }
+
+    public function bulk_delete_sessions() {
+        check_admin_referer( 'marinos_bulk_delete_sessions' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Yetersiz yetki.' );
+        }
+
+        $session_ids_raw = isset( $_POST['session_ids'] ) ? (array) $_POST['session_ids'] : [];
+        $session_ids     = array_values( array_unique( array_filter( array_map( 'sanitize_text_field', $session_ids_raw ) ) ) );
+
+        if ( empty( $session_ids ) ) {
+            wp_redirect( admin_url( 'admin.php?page=marinos-chatbot-logs&bulk_deleted=0' ) );
+            exit;
+        }
+
+        global $wpdb;
+        $table   = $wpdb->prefix . 'marinos_chatbot_logs';
+        $deleted = 0;
+
+        foreach ( $session_ids as $sid ) {
+            if ( $sid === '' ) {
+                continue;
+            }
+            $wpdb->delete( $table, [ 'session_id' => $sid ], [ '%s' ] );
+            $deleted++;
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=marinos-chatbot-logs&bulk_deleted=' . intval( $deleted ) ) );
         exit;
     }
 
@@ -479,6 +510,14 @@ class Marinos_Chatbot_Admin {
             <?php if ( isset( $_GET['deleted'] ) ): ?>
                 <div class="notice notice-success is-dismissible"><p>Konuşma silindi.</p></div>
             <?php endif; ?>
+            <?php if ( isset( $_GET['bulk_deleted'] ) ): ?>
+                <?php $bd = max( 0, intval( $_GET['bulk_deleted'] ) ); ?>
+                <?php if ( $bd > 0 ): ?>
+                    <div class="notice notice-success is-dismissible"><p><?php echo $bd; ?> konuşma silindi.</p></div>
+                <?php else: ?>
+                    <div class="notice notice-warning is-dismissible"><p>Silinecek konuşma seçilmedi.</p></div>
+                <?php endif; ?>
+            <?php endif; ?>
             <?php if ( $session_filter ): ?>
                 <p>
                     <a href="<?php echo esc_url( admin_url('admin.php?page=marinos-chatbot-logs') ); ?>">&larr; Tüm konuşmalara dön</a>
@@ -500,30 +539,60 @@ class Marinos_Chatbot_Admin {
                     </tbody>
                 </table>
             <?php else: ?>
-                <table class="widefat striped">
-                    <thead><tr><th>Tarih</th><th>IP</th><th>Sayfa</th><th>Mesaj</th><th>İşlem</th></tr></thead>
-                    <tbody>
-                    <?php if ( empty( $sessions ) ): ?>
-                        <tr><td colspan="5">Henüz konuşma yok.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ( $sessions as $s ): ?>
-                        <tr>
-                            <td><?php echo esc_html($s->started); ?></td>
-                            <td><?php echo esc_html($s->visitor_ip); ?></td>
-                            <td><?php echo esc_html($s->visitor_page); ?></td>
-                            <td><?php echo intval($s->msg_count); ?></td>
-                            <td style="white-space:nowrap;">
-                                <a href="<?php echo esc_url( admin_url('admin.php?page=marinos-chatbot-logs&session_id='.urlencode($s->session_id)) ); ?>">Görüntüle</a>
-                                &nbsp;|&nbsp;
-                                <a href="<?php echo esc_url( wp_nonce_url( admin_url('admin-post.php?action=marinos_delete_session&session_id='.urlencode($s->session_id)), 'marinos_delete_'.$s->session_id ) ); ?>"
-                                   onclick="return confirm('Silmek istediğinizden emin misiniz?');"
-                                   style="color:#cc0000;">Sil</a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                    </tbody>
-                </table>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="mc-bulk-delete-form">
+                    <input type="hidden" name="action" value="marinos_bulk_delete_sessions">
+                    <?php wp_nonce_field( 'marinos_bulk_delete_sessions' ); ?>
+                    <p style="margin:0 0 10px;">
+                        <button type="submit" class="button button-secondary" style="color:#cc0000;border-color:#cc0000;" onclick="return confirm('Seçilen konuşmaları silmek istediğinizden emin misiniz?');">Seçilenleri Sil</button>
+                    </p>
+                    <table class="widefat striped">
+                        <thead>
+                            <tr>
+                                <th style="width:36px;"><input type="checkbox" id="mc-select-all-sessions"></th>
+                                <th>Tarih</th>
+                                <th>IP</th>
+                                <th>Sayfa</th>
+                                <th>Mesaj</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php if ( empty( $sessions ) ): ?>
+                            <tr><td colspan="6">Henüz konuşma yok.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ( $sessions as $s ): ?>
+                            <tr>
+                                <td><input type="checkbox" class="mc-session-checkbox" name="session_ids[]" value="<?php echo esc_attr( $s->session_id ); ?>"></td>
+                                <td><?php echo esc_html($s->started); ?></td>
+                                <td><?php echo esc_html($s->visitor_ip); ?></td>
+                                <td><?php echo esc_html($s->visitor_page); ?></td>
+                                <td><?php echo intval($s->msg_count); ?></td>
+                                <td style="white-space:nowrap;">
+                                    <a href="<?php echo esc_url( admin_url('admin.php?page=marinos-chatbot-logs&session_id='.urlencode($s->session_id)) ); ?>">Görüntüle</a>
+                                    &nbsp;|&nbsp;
+                                    <a href="<?php echo esc_url( wp_nonce_url( admin_url('admin-post.php?action=marinos_delete_session&session_id='.urlencode($s->session_id)), 'marinos_delete_'.$s->session_id ) ); ?>"
+                                       onclick="return confirm('Silmek istediğinizden emin misiniz?');"
+                                       style="color:#cc0000;">Sil</a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </form>
+                <script>
+                (function(){
+                    var selectAll = document.getElementById('mc-select-all-sessions');
+                    if (!selectAll) return;
+                    selectAll.addEventListener('change', function(){
+                        var checked = !!selectAll.checked;
+                        var checkboxes = document.querySelectorAll('.mc-session-checkbox');
+                        for (var i = 0; i < checkboxes.length; i++) {
+                            checkboxes[i].checked = checked;
+                        }
+                    });
+                })();
+                </script>
                 <?php
                 $total_pages = ceil( $total / $per_page );
                 if ( $total_pages > 1 ) {
