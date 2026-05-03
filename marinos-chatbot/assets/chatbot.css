@@ -1,0 +1,282 @@
+/* =============================================
+   Marinos Chatbot V2 — CSS
+   ============================================= */
+
+#marinos-chat-wrapper {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---- Toggle Butonu ---- */
+#marinos-chat-toggle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--mc-color, #1a73e8);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    transition: transform 0.2s;
+    margin-left: auto;
+    animation: mc-glow 2.4s ease-in-out infinite;
+}
+#marinos-chat-toggle:hover { transform: scale(1.08); }
+
+@keyframes mc-glow {
+    0%,100% { box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 0 rgba(26,115,232,0.4); }
+    50%      { box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 10px rgba(26,115,232,0); }
+}
+
+/* ---- Pulse Noktası ---- */
+#mc-pulse-dot {
+    position: absolute;
+    bottom: 52px;
+    right: 4px;
+    width: 14px;
+    height: 14px;
+    background: #ff3b30;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    animation: mc-pulse 1.6s ease-in-out infinite;
+    z-index: 2;
+}
+@keyframes mc-pulse {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.5); opacity: 0.6; }
+}
+
+/* ---- Chat Kutusu ---- */
+#marinos-chat-box {
+    position: absolute;
+    bottom: 78px;
+    right: 0;
+    width: 340px;
+    max-height: 540px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#marinos-chat-box.mc-hidden { display: none !important; }
+#marinos-chat-box.mc-visible {
+    display: flex;
+    animation: mc-slidein 0.25s ease;
+}
+@keyframes mc-slidein {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Header ---- */
+#mc-header {
+    background: var(--mc-header, var(--mc-color, #1a73e8));
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    flex-shrink: 0;
+}
+#mc-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+#mc-title { flex: 1; }
+#mc-title strong { display: block; font-size: 15px; font-weight: 600; }
+#mc-title span {
+    font-size: 12px;
+    opacity: 0.9;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+#mc-minimize {
+    background: none; border: none; cursor: pointer;
+    padding: 4px; border-radius: 6px; display: flex;
+    align-items: center; opacity: 0.8; transition: opacity 0.2s;
+}
+#mc-minimize:hover { opacity: 1; }
+
+/* Online nokta */
+#mc-online-dot {
+    width: 8px; height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+    animation: mc-online-pulse 2s ease-in-out infinite;
+}
+@keyframes mc-online-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74,222,128,0.7); }
+    50%  { box-shadow: 0 0 0 5px rgba(74,222,128,0); }
+    100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+}
+
+/* ---- Mesaj Alanı ---- */
+#mc-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--mc-bg, #f8f9fb);
+}
+
+.mc-msg {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+}
+.mc-msg.bot {
+    background: #fff;
+    color: #1a1a2e;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.mc-msg.user {
+    background: var(--mc-user-bubble, var(--mc-color, #1a73e8));
+    color: #fff;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+/* Yazıyor */
+.mc-typing {
+    display: flex; align-items: center; gap: 5px;
+    padding: 10px 14px;
+    background: #fff; border-radius: 14px; border-bottom-left-radius: 4px;
+    align-self: flex-start;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.mc-typing span {
+    width: 7px; height: 7px; background: #aaa;
+    border-radius: 50%;
+    animation: mc-bounce 1.2s infinite;
+}
+.mc-typing span:nth-child(2) { animation-delay: 0.2s; }
+.mc-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mc-bounce {
+    0%,60%,100% { transform: translateY(0); }
+    30%          { transform: translateY(-5px); }
+}
+
+/* ---- Quick Replies ---- */
+#mc-quick-replies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 10px 14px 6px;
+    background: var(--mc-bg, #f8f9fb);
+    border-top: 1px solid rgba(0,0,0,0.05);
+}
+.mc-qr-btn {
+    padding: 7px 14px;
+    border: 1.5px solid var(--mc-qr, var(--mc-color, #1a73e8));
+    color: var(--mc-qr, var(--mc-color, #1a73e8));
+    background: #fff;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+}
+.mc-qr-btn:hover {
+    background: var(--mc-qr, var(--mc-color, #1a73e8));
+    color: #fff;
+}
+
+/* ---- CTA Bar ---- */
+#mc-cta-bar {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
+    border-bottom: 1px solid #f0f0f0;
+    flex-shrink: 0;
+}
+.mc-cta-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: opacity 0.2s;
+    flex: 1;
+    justify-content: center;
+}
+.mc-cta-btn:hover { opacity: 0.85; }
+.mc-cta-phone    { background: var(--mc-color, #1a73e8); color: #fff; }
+.mc-cta-whatsapp { background: #25d366; color: #fff; }
+
+/* ---- WhatsApp Bar ---- */
+#mc-whatsapp-bar {
+    background: #f0fdf4; border-top: 1px solid #d1fae5;
+    padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; font-size: 13px; color: #166534; flex-shrink: 0;
+}
+#mc-whatsapp-btn {
+    background: #25d366; color: #fff;
+    padding: 6px 12px; border-radius: 8px;
+    text-decoration: none; font-size: 13px; font-weight: 600;
+    white-space: nowrap; transition: background 0.2s;
+}
+#mc-whatsapp-btn:hover { background: #1db954; }
+
+/* ---- Input Alanı ---- */
+#mc-input-area {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 12px 14px; border-top: 1px solid #eee;
+    background: #fff; flex-shrink: 0;
+}
+#mc-input {
+    flex: 1; border: 1px solid #ddd; border-radius: 10px;
+    padding: 9px 12px; font-size: 14px; resize: none;
+    outline: none; font-family: inherit; line-height: 1.4;
+    max-height: 100px; overflow-y: auto;
+    transition: border-color 0.2s;
+}
+#mc-input:focus { border-color: var(--mc-color, #1a73e8); }
+#mc-send {
+    width: 40px; height: 40px; min-width: 40px;
+    border-radius: 10px;
+    background: var(--mc-send, var(--mc-color, #1a73e8));
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity 0.2s;
+}
+#mc-send:hover    { opacity: 0.88; }
+#mc-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- Mobil ---- */
+@media (max-width: 480px) {
+    #marinos-chat-box {
+        width: calc(100vw - 32px);
+        right: -8px;
+        bottom: 76px;
+        max-height: 72vh;
+    }
+}
