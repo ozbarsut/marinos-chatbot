@@ -1,5 +1,32 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.3 — "7 yazdım, 77 anladı" sayı çiftlenme hatası
+
+**Belirti:** Bot "Sitenizde kaç sayfa olmasını istersiniz?" diye soruyor,
+kullanıcı `7` yazıyor ama bot `77 sayfa` olarak yorumluyor.
+
+**Kök sebepler (ikisi de düzeltildi):**
+
+1. **Frontend çift gönderim:** Mobil klavyede hızlı Enter, klavye `repeat`
+   event'i, send-click + Enter yarışı durumlarında "7" iki defa
+   gönderilebiliyordu — backend "7\\n7" görüp Gemini'a "77" gibi geçiriyordu.
+   - `keydown` Enter'da `e.repeat` kontrolü eklendi.
+   - `sendMessage()` başında 400 ms throttle eklendi.
+   - `isWaiting` kilidi DOM güncellemelerinden ÖNCE set ediliyor (race kapatıldı).
+
+2. **Sayı-adımı yorumlama:** Backend artık son bot mesajının "kaç sayfa",
+   "kaç kişi", "how many", "wie viele", "сколько", "كم", "combien",
+   "cuántos" vb. anahtar kelimelerden birini içerip içermediğini
+   denetler. İçeriyorsa kullanıcının `11`, `22`, ... `99` şeklinde
+   *tek token* cevabı `1, 2, ..., 9` olarak normalize ediliyor. "77 sayfa"
+   gibi içinde kelime olan ifadelere dokunulmaz (gerçekten 77 demek isteyen
+   kullanıcıyı bozmaz).
+3. **Sistem prompt'una sayı-adımı guardrail'i:** "11, 22, ..., 99 gibi
+   tekrarlı kısa cevapları 1..9 olarak yorumla" notu otomatik eklendi.
+
+Bu daha önce `60248c2` commit'inde sadece "yolcu sayısı" için yapılmıştı;
+şimdi her sayı-bekleyen adıma genelleştirildi.
+
 ## 1.2.2 — Magic-quotes / "TL\\'lik" görüntülenme hatası düzeltildi
 
 **Belirti:** Bot bazı cevaplarında `10.000 TL\'lik`, `80.000 TL\'lik` gibi

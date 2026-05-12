@@ -76,11 +76,25 @@ class Marinos_Chatbot_Api {
         }
         $history_clean = $this->normalize_history( $history_clean );
 
+        // "Sayfa kaç?" / "Kaç kişi?" / "How many days?" gibi bir SAYI ADIMINDAYSA
+        // kullanıcının "77" / "33" gibi yanlislikla cift basilan rakamini tek basamaga indir.
+        $is_count_step = $this->is_count_step( $history_clean );
+        $prepared_msg  = $this->prepare_user_message( $user_msg, $is_count_step );
+
+        // Sistem prompt'una sayi-adimi guardrail'i ekle.
+        if ( $is_count_step ) {
+            $system_prompt = trim( $system_prompt )
+                . "\n\n[Sayı Adımı Kuralları]"
+                . "\n- Kullanici 11, 22, 33, 44, 55, 66, 77, 88, 99 gibi tekrarli kisa cevap verirse bunu 1,2,3,4,5,6,7,8,9 olarak yorumla (yanlislikla cift basildi varsay)."
+                . "\n- Mantikli ust limiti gecmiyorsa kullanicinin verdigi sayiyi oldugu gibi kullan."
+                . "\n- Asla yarim cumle birakma; tum yaniti tamamla.";
+        }
+
         $payload = [
             'client_key'    => $client_key,
             'model'         => $model_name,
             'model_name'    => $model_name,
-            'message'       => $user_msg,
+            'message'       => $prepared_msg,
             'history'       => $history_clean,
             'system_prompt' => $system_prompt,
             'lang'          => $lang,
@@ -328,5 +342,69 @@ class Marinos_Chatbot_Api {
     private function normalize_text( $text ) {
         $text = preg_replace( '/\s+/u', ' ', trim( (string) $text ) );
         return function_exists( 'mb_strtolower' ) ? mb_strtolower( $text, 'UTF-8' ) : strtolower( $text );
+    }
+
+    /**
+     * Son bot mesaji "kaç X" / "how many X" / "wie viele" / "сколько" tarzi
+     * SAYI BEKLEYEN bir adim mi? Cevap "77" -> "7" gibi tek basamaga indirilebilsin diye.
+     */
+    private function is_count_step( $history ) {
+        if ( empty( $history ) || ! is_array( $history ) ) return false;
+
+        $keywords = [
+            // Türkçe
+            'kac kisi', 'kaç kişi', 'kac sayfa', 'kaç sayfa', 'kac gun', 'kaç gün',
+            'kac adet', 'kaç adet', 'kac saat', 'kaç saat', 'kac metre', 'kaç metre',
+            'yolcu sayisi', 'yolcu sayısı', 'sayfa sayisi', 'sayfa sayısı',
+            'kac olmasini', 'kaç olmasını',
+            // İngilizce
+            'how many', 'how much', 'number of', 'count of',
+            // Almanca
+            'wie viele', 'wie viel', 'anzahl der', 'anzahl von',
+            // Rusça
+            'сколько', 'количество',
+            // Arapça
+            'كم', 'كم عدد',
+            // Fransızca
+            'combien', 'nombre de',
+            // İspanyolca
+            'cuántos', 'cuantos', 'cuántas', 'cuantas', 'número de',
+        ];
+
+        for ( $i = count( $history ) - 1; $i >= 0; $i-- ) {
+            $row = $history[ $i ];
+            if ( empty( $row['role'] ) || $row['role'] !== 'model' || empty( $row['text'] ) ) continue;
+            $text = $this->normalize_text( $row['text'] );
+            foreach ( $keywords as $kw ) {
+                if ( strpos( $text, $kw ) !== false ) return true;
+            }
+            break; // Sadece en son model mesajina bak.
+        }
+        return false;
+    }
+
+    /**
+     * Sayı-adımında çift basılan rakamı düzeltir.
+     * - "77"   -> "7"
+     * - "77 "  -> "7 "
+     * - "7"    -> "7" (degisiklik yok)
+     * - "77 sayfa" -> "77 sayfa" (kelime varsa dokunma, kullanici gercekten 77 demis)
+     * - "11 33" -> "11 33" (birden fazla token, dokunma)
+     */
+    private function prepare_user_message( $user_msg, $is_count_step ) {
+        $msg = trim( (string) $user_msg );
+        if ( ! $is_count_step || $msg === '' ) return $msg;
+
+        // Sadece tek bir "XX" tokeni varsa düzelt: "77" -> "7"
+        if ( preg_match( '/^\s*([1-9])\1\s*$/u', $msg, $m ) ) {
+            return $m[1];
+        }
+        // Içinde tek başına "XX" geçen ve etrafı boşluk/noktalama olan durumlarda da uygula.
+        $normalized = preg_replace_callback(
+            '/(^|\s)([1-9])\2(\s|[.,!?]|$)/u',
+            function ( $matches ) { return $matches[1] . $matches[2] . $matches[3]; },
+            $msg
+        );
+        return is_string( $normalized ) ? trim( $normalized ) : $msg;
     }
 }

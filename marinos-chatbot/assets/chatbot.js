@@ -226,9 +226,18 @@
     // =============================================
     // Input
     // =============================================
-    $send.on('click', function () { sendMessage(); });
+    var lastSendAt = 0;
+    $send.on('click', function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        sendMessage();
+    });
     $input.on('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            // Klavye repeat / hızlı çift Enter koruması — "7" yerine "77" gitmesini önler.
+            if (e.repeat) return;
+            sendMessage();
+        }
     });
     $input.on('input', function () {
         this.style.height = 'auto';
@@ -242,15 +251,21 @@
     function sendMessage() {
         var text = $.trim($input.val());
         if (!text || isWaiting) return;
+        // 400 ms throttle: çift tıklama / Enter+Click yarış durumlarını engelle.
+        var now = Date.now();
+        if (now - lastSendAt < 400) return;
+        lastSendAt = now;
         if (text.length > 4000) text = text.slice(0, 4000);
+
+        // Önce kilitle, sonra DOM oynat — race ortadan kalkar.
+        isWaiting = true;
+        $send.prop('disabled', true);
 
         msgCount++;
         $qrArea.slideUp(200);
         appendUserMessage(text);
         history.push({ role: 'user', text: text });
         $input.val('').css('height', 'auto');
-        $send.prop('disabled', true);
-        isWaiting = true;
         clearInactivityTimer();
         showTyping();
 
