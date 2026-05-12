@@ -1,5 +1,34 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.2 — Magic-quotes / "TL\\'lik" görüntülenme hatası düzeltildi
+
+**Belirti:** Bot bazı cevaplarında `10.000 TL\'lik`, `80.000 TL\'lik` gibi
+backslash-escaped metin gösteriyordu.
+
+**Kök sebep:** WordPress, gelen `$_POST` verisine otomatik olarak slash ekler
+(magic quotes). `sanitize_*` fonksiyonları bu slash'ları temizlemez. Bu yüzden:
+
+1. Kullanıcı normal `'` yazıyor.
+2. Bot da normal `'` ile cevap veriyor.
+3. Frontend bu cevabı **bir sonraki turun history'sine** koyup geri POST ediyor.
+4. WP magic-quotes apostrofu `\'`ye çeviriyor.
+5. Biz `wp_unslash()` çağırmadan Gemini'a yolluyoruz.
+6. Gemini geçmişte `TL\'lik` stilini görüyor → bir sonraki cevabında o stili
+   taklit ediyor.
+7. Kullanıcı ekranda `TL\'lik` görüyor.
+
+**Düzeltme:**
+- `class-api.php` — `handle_chat()` ve `handle_flush()` içindeki tüm `$_POST`
+  okumalarına `wp_unslash()` eklendi (message, session_id, page_url, lang,
+  history dahil).
+- `class-visitor.php` — `save()` içindeki tüm `$_POST` okumalarına `wp_unslash()`.
+- Defansif önlem: proxy'den dönen yanıtta da `\\'` ve `\\"` kalıntıları
+  temizleniyor (proxy başka bir hostta double-escape yaparsa diye).
+
+Bu üçlü onarımdan sonra eski sohbet kayıtlarında `\'` olsa bile **yeni
+mesajlar** temiz olarak gidip temiz dönecek. Geçmişteki kirli kayıtların
+etkisi yeni oturum açılınca otomatik kaybolur.
+
 ## 1.2.1 — Model seçimi geri eklendi (kayıp özellik telafisi)
 
 `a82b6a4` ve `fa1d15e` commit'leriyle eklenmiş olan **admin panel model seçici**

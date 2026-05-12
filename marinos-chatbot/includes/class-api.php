@@ -23,11 +23,14 @@ class Marinos_Chatbot_Api {
     public function handle_chat() {
         check_ajax_referer( 'marinos_chatbot_nonce', 'nonce' );
 
-        $history    = isset( $_POST['history'] )    ? $_POST['history']                            : [];
-        $user_msg   = isset( $_POST['message'] )    ? sanitize_textarea_field( $_POST['message'] ) : '';
-        $session_id = isset( $_POST['session_id'] ) ? sanitize_text_field( $_POST['session_id'] )  : '';
-        $page_url   = isset( $_POST['page_url'] )   ? esc_url_raw( $_POST['page_url'] )            : '';
-        $lang       = isset( $_POST['lang'] )       ? sanitize_text_field( $_POST['lang'] )        : '';
+        // WordPress, $_POST verisine otomatik backslash ekler (magic quotes).
+        // Sanitize ETMEDEN ÖNCE mutlaka wp_unslash() çağırmazsak: ' -> \' kalır,
+        // bu metin geçmişe yazılır ve Gemini sonraki cevaplarında \' stilini taklit eder.
+        $history    = isset( $_POST['history'] )    ? wp_unslash( $_POST['history'] )                            : [];
+        $user_msg   = isset( $_POST['message'] )    ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+        $session_id = isset( $_POST['session_id'] ) ? sanitize_text_field( wp_unslash( $_POST['session_id'] ) )  : '';
+        $page_url   = isset( $_POST['page_url'] )   ? esc_url_raw( wp_unslash( $_POST['page_url'] ) )            : '';
+        $lang       = isset( $_POST['lang'] )       ? sanitize_text_field( wp_unslash( $_POST['lang'] ) )        : '';
 
         if ( empty( $user_msg ) || empty( $session_id ) ) {
             wp_send_json_error( 'Geçersiz istek.' );
@@ -64,7 +67,8 @@ class Marinos_Chatbot_Api {
             $slice = array_slice( $history, -1 * self::HISTORY_LIMIT );
             foreach ( $slice as $item ) {
                 $role = ( isset( $item['role'] ) && $item['role'] === 'model' ) ? 'model' : 'user';
-                $text = isset( $item['text'] ) ? sanitize_textarea_field( $item['text'] ) : '';
+                // $history zaten wp_unslash'ten geçti; sanitize_textarea_field salt güvenli karakterler bırakır.
+                $text = isset( $item['text'] ) ? sanitize_textarea_field( (string) $item['text'] ) : '';
                 if ( $text === '' ) continue;
                 if ( function_exists( 'mb_substr' ) ) $text = mb_substr( $text, 0, self::MAX_MESSAGE_CHARS );
                 $history_clean[] = [ 'role' => $role, 'text' => $text ];
@@ -123,8 +127,8 @@ class Marinos_Chatbot_Api {
         // session_id li flush mantigi ile devam et (mail kilitleri zaten idempotent).
         $valid_nonce = isset( $_POST['nonce'] ) && wp_verify_nonce( $_POST['nonce'], 'marinos_chatbot_nonce' );
 
-        $session_id = isset( $_POST['session_id'] ) ? sanitize_text_field( $_POST['session_id'] ) : '';
-        $page_url   = isset( $_POST['page_url'] )   ? esc_url_raw( $_POST['page_url'] )           : '';
+        $session_id = isset( $_POST['session_id'] ) ? sanitize_text_field( wp_unslash( $_POST['session_id'] ) ) : '';
+        $page_url   = isset( $_POST['page_url'] )   ? esc_url_raw( wp_unslash( $_POST['page_url'] ) )           : '';
         $ip         = $this->get_ip();
 
         if ( ! $session_id ) {
@@ -184,7 +188,12 @@ class Marinos_Chatbot_Api {
                 $err = isset( $data['error'] ) ? (string) $data['error'] : 'Yanit alinamadi.';
                 return new WP_Error( 'provider_error', $err );
             }
-            return (string) $data['reply'];
+            // Proxy bazi durumlarda metni cift-escape edebilir (TL\'lik gibi).
+            // Klasik magic-quotes kalintilarini temizle:  \'  ->  '   ve  \"  ->  "
+            $reply = (string) $data['reply'];
+            $reply = preg_replace( "/\\\\'/", "'", $reply );
+            $reply = preg_replace( '/\\\\"/', '"', $reply );
+            return $reply;
         }
 
         return $last_err instanceof WP_Error ? $last_err : new WP_Error( 'unknown', 'Bilinmeyen hata' );
