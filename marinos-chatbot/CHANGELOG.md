@@ -1,5 +1,22 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.4 — Konuşma saklama süresi yapılandırılabilir oldu
+
+**Belirti:** Ziyaretçi sayfayı yenilese de eski sohbet görünmeye devam ediyordu.
+Eski sürümde sabit **24 saat** tutuluyordu (çok uzun).
+
+**Düzeltme:**
+- Yeni admin ayarı: **Karşılama Akışı → Konuşma Saklama Süresi (dakika)**.
+  Seçenekler: 5 / 10 / 15 / 30 / 60 / 120 / 240 / 720 / 1440 dk.
+  **Varsayılan: 30 dakika.**
+- Yeni admin ayarı: **Pencere Kapatıldığında Sohbeti Sil** (Evet/Hayır).
+  Evet seçilirse ziyaretçi widget'ı küçülttüğü anda `localStorage`
+  temizlenir; bir sonraki açılışta sohbet sıfırdan başlar.
+- Süre, **son aktivite zamanına** göre işliyor — yani 30 dk hareketsizlik
+  geçerse temizlenir. Aktif sohbet süresince saklanır.
+- `clearSession()` helper'ı geri eklendi (rewrite sırasında kaybolmuştu;
+  şu anki `closeChat()` mantığı buna güveniyor).
+
 ## 1.2.3 — "7 yazdım, 77 anladı" sayı çiftlenme hatası
 
 **Belirti:** Bot "Sitenizde kaç sayfa olmasını istersiniz?" diye soruyor,

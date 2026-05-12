@@ -34,6 +34,8 @@ class Marinos_Chatbot_Widget {
             'cta_visibility'  => get_option( 'marinos_chatbot_cta_visibility', 'always' ),
             'site_locale'     => substr( (string) get_locale(), 0, 2 ),
             'i18n'            => $this->i18n_strings(),
+            'session_ttl'     => max( 1, (int) get_option( 'marinos_chatbot_session_ttl', 30 ) ),
+            'clear_on_close'  => get_option( 'marinos_chatbot_clear_on_close', '0' ),
             'session_key'     => 'mc_session_' . md5( home_url() ), // Siteye özgü localStorage anahtarı
         ] );
     }

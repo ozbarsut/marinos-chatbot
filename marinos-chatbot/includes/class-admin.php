@@ -77,6 +77,8 @@ class Marinos_Chatbot_Admin {
             'marinos_chatbot_typing_duration'  => 'absint',
             'marinos_chatbot_pulse_enabled'    => 'sanitize_text_field',
             'marinos_chatbot_quick_replies'    => 'sanitize_textarea_field',
+            'marinos_chatbot_session_ttl'      => 'absint',
+            'marinos_chatbot_clear_on_close'   => 'sanitize_text_field',
             // Görünüm — Renkler
             'marinos_chatbot_primary_color'    => 'sanitize_hex_color',
             'marinos_chatbot_header_color'     => 'sanitize_hex_color',
@@ -132,6 +134,8 @@ class Marinos_Chatbot_Admin {
         $typing_duration  = get_option( 'marinos_chatbot_typing_duration', 1200 );
         $pulse_enabled    = get_option( 'marinos_chatbot_pulse_enabled', '1' );
         $quick_replies    = get_option( 'marinos_chatbot_quick_replies', '' );
+        $session_ttl      = (int) get_option( 'marinos_chatbot_session_ttl', 30 );
+        $clear_on_close   = get_option( 'marinos_chatbot_clear_on_close', '0' );
         // Renkler
         $primary_color    = get_option( 'marinos_chatbot_primary_color', '#1a73e8' );
         $header_color     = get_option( 'marinos_chatbot_header_color', '' );
@@ -268,6 +272,35 @@ class Marinos_Chatbot_Admin {
                         <label>Hızlı Cevap Butonları</label>
                         <textarea name="marinos_chatbot_quick_replies" rows="4" placeholder="Her satıra bir buton yazın:&#10;Fiyatlar&#10;WhatsApp&#10;Ara&#10;Ekonomi"><?php echo esc_textarea($quick_replies); ?></textarea>
                         <p class="desc">Her satır bir buton olur. Boş bırakırsanız buton çıkmaz. Özel komutlar: <code>__whatsapp__</code> ve <code>__phone__</code></p>
+                    </div>
+                    <div class="mc-grid2" style="margin-top:12px;">
+                        <div class="mc-field">
+                            <label>Konuşma Saklama Süresi (dakika)</label>
+                            <select name="marinos_chatbot_session_ttl">
+                                <?php
+                                $ttl_choices = [ 5, 10, 15, 30, 60, 120, 240, 720, 1440 ];
+                                foreach ( $ttl_choices as $opt ) {
+                                    $hr = $opt >= 60 ? ' (' . round( $opt / 60, 1 ) . ' saat)' : '';
+                                    printf(
+                                        '<option value="%d" %s>%d dk%s</option>',
+                                        $opt,
+                                        selected( $session_ttl, $opt, false ),
+                                        $opt,
+                                        esc_html( $hr )
+                                    );
+                                }
+                                ?>
+                            </select>
+                            <p class="desc">Ziyaretçinin tarayıcısında konuşma kaç dakika boyunca saklansın. Süre dolunca sayfa yenilendiğinde sohbet sıfırlanır. Önerilen: <strong>30 dk</strong>.</p>
+                        </div>
+                        <div class="mc-field">
+                            <label>Pencere Kapatıldığında Sohbeti Sil</label>
+                            <select name="marinos_chatbot_clear_on_close">
+                                <option value="0" <?php selected($clear_on_close,'0'); ?>>Hayır — Süre dolana kadar kalsın</option>
+                                <option value="1" <?php selected($clear_on_close,'1'); ?>>Evet — Kullanıcı küçültür küçültmez temizle</option>
+                            </select>
+                            <p class="desc">"Evet" seçilirse ziyaretçi widget'i küçülttüğü anda localStorage temizlenir; bir sonraki açılışta sohbet sıfırdan başlar.</p>
+                        </div>
                     </div>
                 </div>
 

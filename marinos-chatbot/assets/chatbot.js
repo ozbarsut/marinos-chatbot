@@ -3,6 +3,9 @@
 
     var cfg            = window.marinosChatbot || {};
     var SK             = cfg.session_key || 'mc_session';
+    // Konuşmanın localStorage'da kalma süresi (dk -> ms). Admin'den ayarlanır, varsayılan 30 dk.
+    var SESSION_TTL_MS = Math.max(1, parseInt(cfg.session_ttl, 10) || 30) * 60 * 1000;
+    var CLEAR_ON_CLOSE = cfg.clear_on_close === '1' || cfg.clear_on_close === 1;
     var I18N           = cfg.i18n || {};
     var LANG           = detectLang();
     var T              = I18N[LANG] || I18N.tr || {};
@@ -42,7 +45,7 @@
             var raw = localStorage.getItem(SK);
             if (!raw) return null;
             var data = JSON.parse(raw);
-            if (!data.ts || (Date.now() - data.ts) > 86400000) {
+            if (!data.ts || (Date.now() - data.ts) > SESSION_TTL_MS) {
                 localStorage.removeItem(SK);
                 return null;
             }
@@ -62,6 +65,10 @@
                 ts: Date.now()
             }));
         } catch (e) {}
+    }
+
+    function clearSession() {
+        try { localStorage.removeItem(SK); } catch (e) {}
     }
 
     var saved     = loadSession();
@@ -169,6 +176,17 @@
         clearInactivityTimer();
         // Kapatınca da bekleyen e-postayı tetikle.
         flushBeacon();
+        // Admin "kapatıldığında sil" demişse localStorage'ı temizle.
+        if (CLEAR_ON_CLOSE) {
+            clearSession();
+            history = [];
+            savedMsgs = [];
+            welcomed = false;
+            msgCount = 0;
+            $messages.empty();
+            $qrArea.empty().hide();
+            $waBar.hide();
+        }
     }
 
     $('#marinos-chat-toggle').on('click', function () {
