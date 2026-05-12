@@ -1,5 +1,32 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.7 — "400 yazdım, 400.000 anladı" sayı genişletme hatası
+
+**Belirti:** Kullanıcı "kaç ürün?" sorusuna `400` yazıyor; bot bunu
+`400.000` (dört yüz bin) gibi yorumlayıp "oldukça büyük bir sayı" diyor.
+
+**Sebep:** Gemini, Türkçe locale'de `.` karakterini binlik ayraç olarak
+biliyor (`30.000 TL` paterninden öğrendiği şekilde). Önceki bağlamda
+`30.000 TL` görünce, kullanıcının yazdığı çıplak `400`'ü kendisi
+`400.000`'e *normalize* edip yorumluyor.
+
+**Düzeltme — iki katman:**
+
+1. **Mesaj zenginleştirme:** Sayı-adımındaysak ve kullanıcı SIRF bir
+   tamsayı yazdıysa (örn. `400`), mesajı şu hale dönüştürüyoruz:
+   `400 (ziyaretci tam olarak 400 yazdi; binlik veya milyonluk carpan UYGULAMA, sayiyi oldugu gibi kullan)`
+   Gemini bu açık talimat sayesinde 400'ü 400 olarak kullanır.
+
+2. **Sistem prompt'a kalın yazılı kural:**
+   - "Kullanıcının yazdığı sayıyı OLDUĞU GİBİ KULLAN. ASLA binlik/milyonluk çarpanla genişletme."
+   - "'400' yazıldıysa anlamı 400'dür (dört yüz). 400.000 DEĞİLDİR."
+   - "Yanıtında sayıyı tekrar yazarken kullanıcının formatına saygı duy."
+
+Bu kuralın 1.2.3'teki `11..99 → 1..9` kuralıyla aynı mekanizmadan
+geldiğini (`is_count_step` + `prepare_user_message`) hatırlatmak gerek;
+yalnız bu sefer "çift basma" değil "binlik çarpan ekleme" hatasını
+hedefliyor.
+
 ## 1.2.6 — E-posta gönderimi sertleştirildi + tanılama paneli
 
 **Belirti:** Konuşma bittikten 1 dk sonra mail gelmesi gerekirken yine

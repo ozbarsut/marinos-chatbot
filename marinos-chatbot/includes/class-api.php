@@ -85,9 +85,14 @@ class Marinos_Chatbot_Api {
         // Sistem prompt'una sayi-adimi guardrail'i ekle.
         if ( $is_count_step ) {
             $system_prompt = trim( $system_prompt )
-                . "\n\n[Sayı Adımı Kuralları]"
-                . "\n- Kullanici 11, 22, 33, 44, 55, 66, 77, 88, 99 gibi tekrarli kisa cevap verirse bunu 1,2,3,4,5,6,7,8,9 olarak yorumla (yanlislikla cift basildi varsay)."
-                . "\n- Mantikli ust limiti gecmiyorsa kullanicinin verdigi sayiyi oldugu gibi kullan().";
+                . "\n\n[Sayı Adımı Kuralları — ÇOK ÖNEMLİ]"
+                . "\n- Kullanıcının yazdığı sayıyı OLDUĞU GİBİ KULLAN. ASLA binlik/milyonluk çarpanla genişletme."
+                . "\n- '400' yazıldıysa anlamı 400'dür (dört yüz). 400.000 (dört yüz bin) DEĞİLDİR."
+                . "\n- '50' yazıldıysa 50'dir, 50.000 DEĞİLDİR."
+                . "\n- Türkçe locale'de '.' bazen binlik ayraçtır (örn: 30.000 TL = otuz bin lira). Ama kullanıcı SADECE rakam yazdıysa (örn: 400) bu çarpansız ham sayıdır."
+                . "\n- 11, 22, 33, 44, 55, 66, 77, 88, 99 gibi tek-token tekrarlı kısa cevapları 1..9 olarak yorumla (yanlışlıkla çift basıldı varsay)."
+                . "\n- Mantıklı üst limiti geçmiyorsa kullanıcının verdiği sayıyı olduğu gibi kullan."
+                . "\n- Yanıtında sayıyı tekrar yazarken kullanıcının formatına SAYGI duy: '400' dediğinde sen de '400' yaz, '400.000' yazma.";
         }
 
         // Her zaman geçerli yarım-cevap önleme guardrail'i:
@@ -547,6 +552,17 @@ class Marinos_Chatbot_Api {
             function ( $matches ) { return $matches[1] . $matches[2] . $matches[3]; },
             $msg
         );
-        return is_string( $normalized ) ? trim( $normalized ) : $msg;
+        $msg = is_string( $normalized ) ? trim( $normalized ) : $msg;
+
+        // Mesaj sadece tek bir tam sayı içeriyorsa, Gemini'nin binlik çarpanla
+        // genişletmesini (400 -> 400.000) önlemek için açık disambiguation ekle.
+        if ( preg_match( '/^\s*(\d{1,9})\s*$/u', $msg, $m2 ) ) {
+            $n = (int) $m2[1];
+            // 1..999 arasındaki sayılar en sık karıştırılan aralık.
+            if ( $n >= 1 && $n <= 999999 ) {
+                $msg = $n . " (ziyaretci tam olarak " . $n . " yazdi; binlik veya milyonluk carpan UYGULAMA, sayiyi oldugu gibi kullan)";
+            }
+        }
+        return $msg;
     }
 }
