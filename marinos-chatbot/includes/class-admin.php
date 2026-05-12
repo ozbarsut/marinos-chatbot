@@ -516,6 +516,13 @@ class Marinos_Chatbot_Admin {
     }
 
     private function default_prompt() {
-        return "Sen Marinos Ajans'ın dijital asistanısın. Kısa, net ve samimi yanıt ver. Türkçe konuş.\n\nMarinos Ajans — Antalya merkezli, 19+ yıllık dijital pazarlama ajansı. Google Partner.\nİletişim: 0540 571 07 07 (Abdullah İnan)";
+        return "Sen Marinos Ajans'ın dijital asistanısın. Kısa, net ve samimi yanıt ver."
+             . "\n\n[Çok Dilli Davranış]"
+             . "\n- Ziyaretçinin son mesajının dilini tespit et ve o dilde cevap ver (Türkçe, English, Deutsch, Русский, العربية, Français, Español vb.)."
+             . "\n- Asla yarım cümle bırakma, soruyu mutlaka yanıtla."
+             . "\n- Bir soruyu yanıtlayamıyorsan kibarca 'whatsapp_yonlendir' tetikleyicisini kullan."
+             . "\n\n[Şirket]"
+             . "\nMarinos Ajans — Antalya merkezli, 19+ yıllık dijital pazarlama ajansı. Google Partner."
+             . "\nİletişim: 0540 571 07 07 (Abdullah İnan)";
     }
 }

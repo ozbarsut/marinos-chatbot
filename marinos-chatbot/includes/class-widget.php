@@ -32,8 +32,103 @@ class Marinos_Chatbot_Widget {
             'cta_style'       => get_option( 'marinos_chatbot_cta_style', 'icon_text' ),
             'cta_position'    => get_option( 'marinos_chatbot_cta_position', 'above_input' ),
             'cta_visibility'  => get_option( 'marinos_chatbot_cta_visibility', 'always' ),
+            'site_locale'     => substr( (string) get_locale(), 0, 2 ),
+            'i18n'            => $this->i18n_strings(),
             'session_key'     => 'mc_session_' . md5( home_url() ), // Siteye özgü localStorage anahtarı
         ] );
+    }
+
+    /**
+     * Frontend icin cok dilli UI metinleri.
+     * Tarayici dili otomatik secilir; eslesme yoksa "tr" varsayilir.
+     */
+    private function i18n_strings() {
+        return [
+            'tr' => [
+                'placeholder'   => 'Mesajınızı yazın...',
+                'send'          => 'Gönder',
+                'online'        => 'Çevrimiçi',
+                'wa_question'   => 'Daha fazla bilgi almak ister misiniz?',
+                'wa_action'     => "WhatsApp'tan yazın",
+                'error_generic' => 'Şu an cevap veremiyorum. Lütfen birkaç saniye sonra tekrar deneyin.',
+                'error_network' => 'Bağlantı sorunu oluştu. İnternet bağlantınızı kontrol edip tekrar deneyin.',
+                'retry'         => 'Yeniden gönder',
+                'aria_close'    => 'Sohbeti kapat',
+                'aria_open'     => 'Sohbeti aç',
+            ],
+            'en' => [
+                'placeholder'   => 'Type your message...',
+                'send'          => 'Send',
+                'online'        => 'Online',
+                'wa_question'   => 'Would you like more details?',
+                'wa_action'     => 'Message us on WhatsApp',
+                'error_generic' => "I can't reply right now. Please try again in a moment.",
+                'error_network' => 'Connection issue. Please check your network and try again.',
+                'retry'         => 'Retry',
+                'aria_close'    => 'Close chat',
+                'aria_open'     => 'Open chat',
+            ],
+            'de' => [
+                'placeholder'   => 'Nachricht eingeben...',
+                'send'          => 'Senden',
+                'online'        => 'Online',
+                'wa_question'   => 'Möchten Sie mehr Informationen?',
+                'wa_action'     => 'Auf WhatsApp schreiben',
+                'error_generic' => 'Im Moment keine Antwort möglich. Bitte gleich erneut versuchen.',
+                'error_network' => 'Verbindungsproblem. Bitte erneut versuchen.',
+                'retry'         => 'Erneut senden',
+                'aria_close'    => 'Chat schließen',
+                'aria_open'     => 'Chat öffnen',
+            ],
+            'ru' => [
+                'placeholder'   => 'Введите сообщение...',
+                'send'          => 'Отправить',
+                'online'        => 'В сети',
+                'wa_question'   => 'Хотите узнать больше?',
+                'wa_action'     => 'Написать в WhatsApp',
+                'error_generic' => 'Сейчас не могу ответить. Попробуйте ещё раз через минуту.',
+                'error_network' => 'Проблема с подключением. Проверьте интернет и попробуйте снова.',
+                'retry'         => 'Повторить',
+                'aria_close'    => 'Закрыть чат',
+                'aria_open'     => 'Открыть чат',
+            ],
+            'ar' => [
+                'placeholder'   => 'اكتب رسالتك...',
+                'send'          => 'إرسال',
+                'online'        => 'متصل',
+                'wa_question'   => 'هل تريد المزيد من المعلومات؟',
+                'wa_action'     => 'مراسلتنا على واتساب',
+                'error_generic' => 'لا أستطيع الرد الآن. حاول مرة أخرى بعد قليل.',
+                'error_network' => 'مشكلة في الاتصال. حاول مرة أخرى.',
+                'retry'         => 'إعادة المحاولة',
+                'aria_close'    => 'إغلاق الدردشة',
+                'aria_open'     => 'فتح الدردشة',
+            ],
+            'fr' => [
+                'placeholder'   => 'Écrivez votre message...',
+                'send'          => 'Envoyer',
+                'online'        => 'En ligne',
+                'wa_question'   => 'Souhaitez-vous plus d\'informations ?',
+                'wa_action'     => 'Nous écrire sur WhatsApp',
+                'error_generic' => "Je ne peux pas répondre pour le moment. Réessayez dans un instant.",
+                'error_network' => 'Problème de connexion. Réessayez s\'il vous plaît.',
+                'retry'         => 'Réessayer',
+                'aria_close'    => 'Fermer la discussion',
+                'aria_open'     => 'Ouvrir la discussion',
+            ],
+            'es' => [
+                'placeholder'   => 'Escribe tu mensaje...',
+                'send'          => 'Enviar',
+                'online'        => 'En línea',
+                'wa_question'   => '¿Quieres más información?',
+                'wa_action'     => 'Escríbenos en WhatsApp',
+                'error_generic' => 'No puedo responder ahora. Inténtalo de nuevo en un momento.',
+                'error_network' => 'Problema de conexión. Inténtalo de nuevo.',
+                'retry'         => 'Reintentar',
+                'aria_close'    => 'Cerrar chat',
+                'aria_open'     => 'Abrir chat',
+            ],
+        ];
     }
 
     public function render() {
@@ -144,7 +239,7 @@ class Marinos_Chatbot_Widget {
                     <div id="mc-title">
                         <strong><?php echo esc_html($bot_name); ?></strong>
                         <span id="mc-online-status">
-                            <span id="mc-online-dot"></span>Online
+                            <span id="mc-online-dot"></span><span id="mc-online-label">Online</span>
                         </span>
                     </div>
                     <button id="mc-minimize" aria-label="Küçült">
@@ -160,7 +255,7 @@ class Marinos_Chatbot_Widget {
                 <div id="mc-quick-replies"></div>
 
                 <div id="mc-whatsapp-bar" style="display:none;">
-                    <span>Daha fazla bilgi almak ister misiniz?</span>
+                    <span id="mc-wa-question">Daha fazla bilgi almak ister misiniz?</span>
                     <?php if ($whatsapp): ?>
                         <a id="mc-whatsapp-btn" href="https://wa.me/<?php echo esc_attr($whatsapp); ?>" target="_blank" rel="noopener">WhatsApp'tan Yazın</a>
                     <?php endif; ?>
@@ -171,7 +266,7 @@ class Marinos_Chatbot_Widget {
                 <?php endif; ?>
 
                 <div id="mc-input-area">
-                    <textarea id="mc-input" placeholder="Mesajınızı yazın..." rows="1"></textarea>
+                    <textarea id="mc-input" placeholder="Mesajınızı yazın..." rows="1" maxlength="4000"></textarea>
                     <button id="mc-send" aria-label="Gönder">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                     </button>

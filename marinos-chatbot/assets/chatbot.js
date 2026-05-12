@@ -2,13 +2,37 @@
     'use strict';
 
     var cfg            = window.marinosChatbot || {};
-    var SK             = cfg.session_key || 'mc_session';  // localStorage anahtarı
+    var SK             = cfg.session_key || 'mc_session';
+    var I18N           = cfg.i18n || {};
+    var LANG           = detectLang();
+    var T              = I18N[LANG] || I18N.tr || {};
     var isOpen         = false;
     var isWaiting      = false;
     var welcomed       = false;
     var inactivityTimer = null;
     var inactivityFired = false;
     var msgCount       = 0;
+    var lastFailedText = null;
+    var currentXhr     = null;
+
+    // =============================================
+    // Dil tespiti — tarayıcı dilini i18n setine eşle
+    // =============================================
+    function detectLang() {
+        var nav = (navigator.language || navigator.userLanguage || 'tr').toLowerCase().slice(0, 2);
+        if (I18N[nav]) return nav;
+        if (cfg.site_locale && I18N[cfg.site_locale]) return cfg.site_locale;
+        return 'tr';
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     // =============================================
     // localStorage'dan oturumu yükle (sayfa sürekliliği)
@@ -18,33 +42,30 @@
             var raw = localStorage.getItem(SK);
             if (!raw) return null;
             var data = JSON.parse(raw);
-            // 24 saatten eski ise temizle
             if (!data.ts || (Date.now() - data.ts) > 86400000) {
                 localStorage.removeItem(SK);
                 return null;
             }
             return data;
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     }
 
     function saveSession(sessionId, history, messages) {
         try {
+            // history ve mesajlar son 50 ile sınırlı kalsın (performans)
+            var hist = history.slice(-50);
+            var msgs = messages.slice(-80);
             localStorage.setItem(SK, JSON.stringify({
                 sessionId: sessionId,
-                history: history,
-                messages: messages,
+                history: hist,
+                messages: msgs,
                 ts: Date.now()
             }));
-        } catch(e) {}
+        } catch (e) {}
     }
 
-    function clearSession() {
-        try { localStorage.removeItem(SK); } catch(e) {}
-    }
-
-    // Oturumu yükle ya da yeni oluştur
     var saved     = loadSession();
-    var sessionId = saved ? saved.sessionId : ('mc_' + Math.random().toString(36).substr(2,12) + '_' + Date.now());
+    var sessionId = saved ? saved.sessionId : ('mc_' + Math.random().toString(36).substr(2, 12) + '_' + Date.now());
     var history   = saved ? (saved.history || []) : [];
     var savedMsgs = saved ? (saved.messages || []) : [];
 
@@ -61,12 +82,12 @@
     var $qrArea   = $('#mc-quick-replies');
     var $ctaBar   = $('#mc-cta-bar');
 
-    // WhatsApp btn
+    applyI18nLabels();
+
     if (cfg.whatsapp && $('#mc-whatsapp-btn').length) {
         $('#mc-whatsapp-btn').attr('href', 'https://wa.me/' + cfg.whatsapp);
     }
 
-    // CTA görünürlük başlangıç
     if ($ctaBar.length) {
         if ((cfg.cta_visibility || 'always') === 'always') {
             $ctaBar.show();
@@ -75,24 +96,32 @@
         }
     }
 
+    function applyI18nLabels() {
+        if (T.placeholder) $input.attr('placeholder', T.placeholder);
+        if (T.send) $send.attr('aria-label', T.send);
+        if (T.online) $('#mc-online-label').text(T.online);
+        if (T.wa_question) $('#mc-wa-question').text(T.wa_question);
+        if (T.wa_action) $('#mc-whatsapp-btn').text(T.wa_action);
+        if (T.aria_open) $('#marinos-chat-toggle').attr('aria-label', T.aria_open);
+        if (T.aria_close) $minimize.attr('aria-label', T.aria_close);
+    }
+
     // =============================================
     // Önceki mesajları yeniden çiz
     // =============================================
     if (savedMsgs.length > 0) {
         welcomed = true;
-        msgCount = savedMsgs.filter(function(m){ return m.role === 'user'; }).length;
-        $.each(savedMsgs, function(i, m) {
+        msgCount = savedMsgs.filter(function (m) { return m.role === 'user'; }).length;
+        $.each(savedMsgs, function (i, m) {
             if (m.role === 'bot') {
                 renderBotMsg(m.text);
             } else {
                 renderUserMsg(m.text);
             }
         });
-        // Önceki konuşma varsa chatı açık başlat
-        openChat(true); // silent=true, yazıyor animasyonu olmasın
+        openChat(true);
     } else if (cfg.auto_open === '1') {
-        // Önceki konuşma yok, ayara göre otomatik aç
-        var delay = (parseInt(cfg.greeting_delay) || 1) * 1000;
+        var delay = (parseInt(cfg.greeting_delay, 10) || 1) * 1000;
         setTimeout(function () { openChat(false); }, delay);
     }
 
@@ -110,9 +139,9 @@
         if (!welcomed) {
             welcomed = true;
             if (silent) {
-                // Sessiz açılış — önceki konuşma var
+                // Sessiz açılış
             } else {
-                var dur = parseInt(cfg.typing_duration) || 1200;
+                var dur = parseInt(cfg.typing_duration, 10) || 1200;
                 showTyping();
                 setTimeout(function () {
                     removeTyping();
@@ -138,6 +167,8 @@
         $('#mc-icon-open, #mc-avatar-img-toggle').show();
         $('#mc-icon-close, #mc-icon-close-img').hide();
         clearInactivityTimer();
+        // Kapatınca da bekleyen e-postayı tetikle.
+        flushBeacon();
     }
 
     $('#marinos-chat-toggle').on('click', function () {
@@ -151,10 +182,13 @@
     function renderQuickReplies() {
         if (!cfg.quick_replies || !cfg.quick_replies.length) return;
         $qrArea.empty();
-        $.each(cfg.quick_replies, function(i, label) {
+        $.each(cfg.quick_replies, function (i, label) {
             if (!label) return;
-            var $btn = $('<button class="mc-qr-btn"></button>').text(label);
-            $btn.on('click', function() {
+            var displayLabel = label;
+            if (label === '__whatsapp__') displayLabel = T.wa_action || 'WhatsApp';
+            if (label === '__phone__') displayLabel = T.online ? 'Telefon' : 'Phone';
+            var $btn = $('<button class="mc-qr-btn"></button>').text(displayLabel);
+            $btn.on('click', function () {
                 if (label === '__whatsapp__' && cfg.whatsapp) {
                     window.open('https://wa.me/' + cfg.whatsapp, '_blank'); return;
                 }
@@ -192,11 +226,11 @@
     // =============================================
     // Input
     // =============================================
-    $send.on('click', sendMessage);
-    $input.on('keydown', function(e) {
+    $send.on('click', function () { sendMessage(); });
+    $input.on('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
-    $input.on('input', function() {
+    $input.on('input', function () {
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 100) + 'px';
         resetInactivityTimer();
@@ -208,6 +242,7 @@
     function sendMessage() {
         var text = $.trim($input.val());
         if (!text || isWaiting) return;
+        if (text.length > 4000) text = text.slice(0, 4000);
 
         msgCount++;
         $qrArea.slideUp(200);
@@ -223,35 +258,49 @@
             $ctaBar.slideDown(300);
         }
 
-        $.ajax({
+        doRequest(text, 0);
+    }
+
+    function doRequest(text, attempt) {
+        if (currentXhr && currentXhr.abort) {
+            try { currentXhr.abort(); } catch (e) {}
+        }
+        currentXhr = $.ajax({
             url: cfg.ajax_url,
             method: 'POST',
+            timeout: 60000,
             data: {
                 action:     'marinos_chat',
                 nonce:      cfg.nonce,
                 message:    text,
                 session_id: sessionId,
                 page_url:   cfg.page_url,
-                history:    buildHistory(),
+                lang:       LANG,
+                history:    buildHistory()
             },
-            success: function(res) {
+            success: function (res) {
                 removeTyping();
-                if (res.success) {
-                    var reply = res.data.reply;
+                if (res && res.success) {
+                    var reply = (res.data && res.data.reply) ? res.data.reply : '';
+                    if (!reply) reply = T.error_generic || 'Bir hata oluştu.';
                     appendBotMessage(reply);
                     history.push({ role: 'model', text: reply });
-                    if (res.data.whatsapp === true && cfg.whatsapp) {
+                    if (res.data && res.data.whatsapp === true && cfg.whatsapp) {
                         $waBar.hide().slideDown(200);
                     }
+                    lastFailedText = null;
                 } else {
-                    appendBotMessage('Bir hata oluştu, lütfen tekrar deneyin.');
+                    handleFailure(text, attempt, 'server');
                 }
             },
-            error: function() {
+            error: function (xhr, status) {
                 removeTyping();
-                appendBotMessage('Bağlantı hatası oluştu.');
+                // Tarayıcı navigasyonu/abort nedeniyle iptal → tekrar deneme.
+                if (status === 'abort') return;
+                handleFailure(text, attempt, status || 'network');
             },
-            complete: function() {
+            complete: function () {
+                currentXhr = null;
                 isWaiting = false;
                 $send.prop('disabled', false);
                 $input.focus();
@@ -259,6 +308,73 @@
             }
         });
     }
+
+    function handleFailure(text, attempt, reason) {
+        // İlk hatada otomatik tek bir retry (kısa back-off ile).
+        if (attempt < 1) {
+            showTyping();
+            isWaiting = true;
+            $send.prop('disabled', true);
+            setTimeout(function () { doRequest(text, attempt + 1); }, 800);
+            return;
+        }
+        lastFailedText = text;
+        var msg = (reason === 'timeout' || reason === 'network')
+            ? (T.error_network || 'Bağlantı sorunu oluştu.')
+            : (T.error_generic || 'Bir hata oluştu.');
+        appendBotMessage(msg);
+        renderRetryButton();
+    }
+
+    function renderRetryButton() {
+        $qrArea.empty();
+        var $btn = $('<button class="mc-qr-btn"></button>').text(T.retry || 'Tekrar dene');
+        $btn.on('click', function () {
+            if (!lastFailedText) return;
+            $qrArea.slideUp(150);
+            $send.prop('disabled', true);
+            isWaiting = true;
+            showTyping();
+            doRequest(lastFailedText, 0);
+        });
+        $qrArea.append($btn).show();
+    }
+
+    // =============================================
+    // Beacon — sayfa kapatılırken e-postayı anında flush et
+    // =============================================
+    function flushBeacon() {
+        if (!sessionId) return;
+        try {
+            if (navigator.sendBeacon) {
+                var fd = new FormData();
+                fd.append('action', 'marinos_flush');
+                fd.append('nonce', cfg.nonce);
+                fd.append('session_id', sessionId);
+                fd.append('page_url', cfg.page_url || '');
+                navigator.sendBeacon(cfg.ajax_url, fd);
+            } else {
+                $.ajax({
+                    url: cfg.ajax_url, method: 'POST', async: false,
+                    data: {
+                        action: 'marinos_flush', nonce: cfg.nonce,
+                        session_id: sessionId, page_url: cfg.page_url || ''
+                    }
+                });
+            }
+        } catch (e) {}
+    }
+
+    // Yalnızca konuşmada en az 1 mesaj olduysa flush gönder.
+    function maybeFlush() {
+        if (msgCount > 0) flushBeacon();
+    }
+
+    window.addEventListener('pagehide', maybeFlush);
+    window.addEventListener('beforeunload', maybeFlush);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') maybeFlush();
+    });
 
     // =============================================
     // Mesaj DOM + localStorage güncelleme
@@ -279,7 +395,8 @@
 
     function renderBotMsg(text) {
         var $msg = $('<div class="mc-msg bot"></div>');
-        $msg.html(text.replace(/\n/g, '<br>'));
+        // XSS koruması: önce escape, sonra newline → <br>
+        $msg.html(escapeHtml(text).replace(/\n/g, '<br>'));
         $messages.append($msg);
     }
 
@@ -289,13 +406,18 @@
     }
 
     function showTyping() {
+        if ($('#mc-typing-indicator').length) return;
         $messages.append('<div class="mc-typing" id="mc-typing-indicator"><span></span><span></span><span></span></div>');
         scrollBottom();
     }
     function removeTyping() { $('#mc-typing-indicator').remove(); }
-    function scrollBottom() { $messages.scrollTop($messages[0].scrollHeight); }
+    function scrollBottom() {
+        if ($messages.length && $messages[0]) {
+            $messages.scrollTop($messages[0].scrollHeight);
+        }
+    }
     function buildHistory() {
-        return history.slice(-10).map(function(i){ return { role: i.role, text: i.text }; });
+        return history.slice(-10).map(function (i) { return { role: i.role, text: i.text }; });
     }
 
 })(jQuery);
