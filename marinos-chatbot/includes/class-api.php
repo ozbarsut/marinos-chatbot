@@ -9,6 +9,7 @@ class Marinos_Chatbot_Api {
     const REQUEST_RETRIES   = 2;
     const HISTORY_LIMIT     = 12;
     const MAX_MESSAGE_CHARS = 4000;
+    const MAX_OUTPUT_TOKENS = 2048; // Yarım cevap (truncation) kalmaması için tavan.
 
     public function __construct() {
         add_action( 'wp_ajax_marinos_chat',         [ $this, 'handle_chat' ] );
@@ -86,18 +87,29 @@ class Marinos_Chatbot_Api {
             $system_prompt = trim( $system_prompt )
                 . "\n\n[Sayı Adımı Kuralları]"
                 . "\n- Kullanici 11, 22, 33, 44, 55, 66, 77, 88, 99 gibi tekrarli kisa cevap verirse bunu 1,2,3,4,5,6,7,8,9 olarak yorumla (yanlislikla cift basildi varsay)."
-                . "\n- Mantikli ust limiti gecmiyorsa kullanicinin verdigi sayiyi oldugu gibi kullan."
-                . "\n- Asla yarim cumle birakma; tum yaniti tamamla.";
+                . "\n- Mantikli ust limiti gecmiyorsa kullanicinin verdigi sayiyi oldugu gibi kullan().";
         }
 
+        // Her zaman geçerli yarım-cevap önleme guardrail'i:
+        $system_prompt = trim( $system_prompt )
+            . "\n\n[Tamamlık Kuralı]"
+            . "\n- Yanıtını ASLA yarıda bırakma."
+            . "\n- Cümle ortasında, sayıdan sonra, 've', 'veya', 'or', 'and', 'oder' gibi bağlaçlardan sonra bırakma."
+            . "\n- Her yanıt bir noktalama (.!?) ile bitmelidir."
+            . "\n- Çok uzun bir yanıt vermek yerine kısa ve TAM cümleler kur.";
+
         $payload = [
-            'client_key'    => $client_key,
-            'model'         => $model_name,
-            'model_name'    => $model_name,
-            'message'       => $prepared_msg,
-            'history'       => $history_clean,
-            'system_prompt' => $system_prompt,
-            'lang'          => $lang,
+            'client_key'        => $client_key,
+            'model'             => $model_name,
+            'model_name'        => $model_name,
+            'message'           => $prepared_msg,
+            'history'           => $history_clean,
+            'system_prompt'     => $system_prompt,
+            'lang'              => $lang,
+            // Proxy hangi parametre adını okursa okusun diye birden fazla alias gönderiyoruz.
+            'max_tokens'        => self::MAX_OUTPUT_TOKENS,
+            'max_output_tokens' => self::MAX_OUTPUT_TOKENS,
+            'output_tokens'     => self::MAX_OUTPUT_TOKENS,
         ];
 
         $reply = $this->call_provider_with_retry( $payload );
@@ -115,6 +127,18 @@ class Marinos_Chatbot_Api {
                 'error_code' => $reply->get_error_code(),
             ]);
         }
+
+        // Yanıt yarım kaldıysa Gemini'a otomatik "kaldığın yerden devam et" isteği at,
+        // iki cevabı birleştir. Kullanıcı bu adımı fark etmez, tek tam cevap görür.
+        if ( $this->is_truncated_reply( $reply ) ) {
+            $continuation = $this->request_continuation( $payload, $reply );
+            if ( is_string( $continuation ) && $continuation !== '' ) {
+                $reply = $this->stitch_reply( $reply, $continuation );
+            }
+        }
+
+        // Yine de bilinen bitiş kalıpları (örn. "veya", "or", "oder") ile bitiyorsa kibarca onar.
+        $reply = $this->repair_incomplete_reply( $reply );
 
         $logger->log( $session_id, 'model', $reply, $ip, $page_url );
 
@@ -381,6 +405,95 @@ class Marinos_Chatbot_Api {
             break; // Sadece en son model mesajina bak.
         }
         return false;
+    }
+
+    /**
+     * Yanıt yarım kaldı mı? Heuristic'ler:
+     *  - Noktalama (.!?…؟。!？) ile bitmiyorsa
+     *  - "veya/or/oder/и/و" gibi bir bağlaçla bitiyorsa
+     *  - Son kelime tek harfli ya da kelimenin ortası gibi gözüküyorsa (örn. "bütç")
+     */
+    private function is_truncated_reply( $reply ) {
+        $reply = trim( (string) $reply );
+        if ( $reply === '' ) return false;
+        // 1) Noktalama kontrolü
+        if ( ! preg_match( '/[\.!\?…؟。！？\)\]\}]\s*$/u', $reply ) ) return true;
+        // 2) "ve/veya/or/and/oder/и/و" bağlacıyla bitenler (noktalı olsa da çoğunlukla yarım kalır)
+        if ( preg_match( '/\b(ve|veya|or|and|oder|und|и|или|или)\s*[\.!\?…]?\s*$/iu', $reply ) ) return true;
+        return false;
+    }
+
+    /**
+     * Yarım kalan yanıtın devamını Gemini'dan istemek için ikinci istek.
+     */
+    private function request_continuation( $original_payload, $partial_reply ) {
+        $payload = $original_payload;
+        // Mevcut payload üstüne yarım cevabı history'ye ekleyip devam talimatı verelim.
+        $history = isset( $payload['history'] ) && is_array( $payload['history'] ) ? $payload['history'] : [];
+        $history[] = [ 'role' => 'model', 'text' => $partial_reply ];
+        $payload['history']       = array_slice( $history, -20 );
+        $payload['message']       = "[SYSTEM] Az önceki yanıtın yarım kaldı. KISA biçimde, BAŞTAN TEKRARLAMADAN, sadece kalan kısmı tamamla. Mutlaka noktalama ile bitir.";
+        $payload['system_prompt'] = ( $payload['system_prompt'] ?? '' )
+            . "\n\n[Devam Talimatı]"
+            . "\n- Önceki yanıtın yarım kaldı. Sadece eksik kalan kısmı yaz."
+            . "\n- Bütünü TEKRARLAMA, yalnızca yarıda kalan cümleyi tamamlayacak ek metni üret."
+            . "\n- Yeni metin mutlaka noktalama ile bitsin.";
+
+        $continuation = $this->call_provider_with_retry( $payload );
+        if ( is_wp_error( $continuation ) ) return '';
+        return (string) $continuation;
+    }
+
+    /**
+     * Yarım yanıt + devam yanıtını mantıklıca birleştirir.
+     */
+    private function stitch_reply( $partial, $continuation ) {
+        $partial      = rtrim( (string) $partial );
+        $continuation = ltrim( (string) $continuation );
+        if ( $continuation === '' ) return $partial;
+        // Devam metni partial'la başlıyorsa tekrarı kes (Gemini bazen başa dönebilir).
+        if ( function_exists( 'mb_substr' ) ) {
+            $head_len = min( 60, mb_strlen( $partial ) );
+            if ( $head_len > 10 ) {
+                $head = mb_substr( $partial, -$head_len );
+                $pos  = mb_strpos( $continuation, $head );
+                if ( $pos !== false ) {
+                    $continuation = mb_substr( $continuation, $pos + mb_strlen( $head ) );
+                    $continuation = ltrim( $continuation );
+                }
+            }
+        }
+        // Aralarına uygun boşluk koy.
+        $glue = '';
+        if ( $partial !== '' && $continuation !== '' ) {
+            $last  = function_exists( 'mb_substr' ) ? mb_substr( $partial, -1 ) : substr( $partial, -1 );
+            $first = function_exists( 'mb_substr' ) ? mb_substr( $continuation, 0, 1 ) : substr( $continuation, 0, 1 );
+            // Kelime ortasında kesildiyse boşluksuz yapıştır ("bütç" + "e ile..." = "bütçe ile...")
+            if ( preg_match( '/[a-zA-Z\p{L}]/u', $last ) && preg_match( '/[a-zA-Z\p{L}]/u', $first ) ) {
+                $glue = '';
+            } else {
+                $glue = ' ';
+            }
+        }
+        return trim( $partial . $glue . $continuation );
+    }
+
+    /**
+     * Devam isteği bile gelmediyse, çok bilinen yarım kalma kalıplarını lokal olarak onar.
+     */
+    private function repair_incomplete_reply( $reply ) {
+        $reply = trim( (string) $reply );
+        if ( $reply === '' ) return $reply;
+
+        // "veya/or/oder/и/und" bağlacıyla biten kuyruğu temizle.
+        $reply = preg_replace( '/\s*\b(ve|veya|or|and|oder|und|и|или)\b\s*[\.!\?…]?\s*$/iu', '', $reply );
+        $reply = trim( $reply );
+
+        // Hiçbir noktalama yoksa "." ekle.
+        if ( $reply !== '' && ! preg_match( '/[\.!\?…؟。！？\)\]\}]\s*$/u', $reply ) ) {
+            $reply .= '.';
+        }
+        return $reply;
     }
 
     /**

@@ -1,5 +1,39 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.5 — Yarım kalan yanıt (truncation) otomatik tamamlanıyor
+
+**Belirti:** Bot cevapları cümle/kelime ortasında kesiliyordu. Örnek:
+"Aylık 50.000 TL bütçe ile 3" (sayıdan sonra yarım kaldı) veya
+"Harika, aylık 50.000 TL'lik bir bütç" (kelime ortasında kesildi).
+
+**Kök sebep:** Gemini cevabı, modelin response token bütçesini bitirince yarım
+kalır. Proxy de bu kesilmeyi olduğu gibi geri verir.
+
+**Düzeltme — üç katman:**
+
+1. **Geniş token tavanı.** Payload'a `max_tokens`, `max_output_tokens`,
+   `output_tokens` (proxy hangi parametre adını okursa okusun) **2048**
+   olarak gönderiliyor. Bu çoğu yarım kalmayı en başından engeller.
+
+2. **Truncation detector + auto-continue.** Yanıt geldikten sonra
+   `is_truncated_reply()`:
+   - Noktalama (`.!?…؟。！？`) ile bitmiyor mu?
+   - `ve / veya / or / and / oder / und / и / или` gibi bir bağlaçla mı bitiyor?
+   
+   Yarım algılanırsa **kullanıcı fark etmeden** Gemini'a ikinci bir istek
+   atılıyor (`request_continuation`): geçmişe yarım cevap eklenip "yalnızca
+   eksik kalan kısmı yaz, başa dönme" talimatı veriliyor. Dönen iki yanıt
+   `stitch_reply()` ile akıllıca birleştiriliyor (kelime ortasında kesilmişse
+   boşluksuz yapıştırılıyor: "bütç" + "e ile" → "bütçe ile").
+
+3. **Lokal onarım.** Auto-continue de yanıt vermezse `repair_incomplete_reply()`
+   kuyrukta kalan "veya / or / oder" gibi takıları siliyor ve gerekirse `.`
+   ekliyor — kullanıcı yine de düzgün biten bir mesaj görür.
+
+**Sistem prompt'una "Tamamlık Kuralı"** otomatik ekleniyor:
+"Yanıtını ASLA yarıda bırakma; cümle ortasında, sayıdan veya bağlaçtan sonra
+durma; her yanıt bir noktalama ile bitmelidir."
+
 ## 1.2.4 — Konuşma saklama süresi yapılandırılabilir oldu
 
 **Belirti:** Ziyaretçi sayfayı yenilese de eski sohbet görünmeye devam ediyordu.
