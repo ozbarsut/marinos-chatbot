@@ -29,32 +29,63 @@ class Marinos_Chatbot_Mailer {
 
         $logger = new Marinos_Chatbot_Logger();
         $logs   = $logger->get_session( $session_id );
+        if ( ! is_array( $logs ) ) $logs = [];
         $count  = count( $logs );
         if ( $count === 0 ) return false;
 
-        // Aynı konuşma için 5 dakikalık idempotent kilit.
+        // Aynı konuşma + aynı son mesaj kombinasyonu için kilit.
+        $last_ts  = isset( $logs[ $count - 1 ]->created_at ) ? (string) $logs[ $count - 1 ]->created_at : '';
         $lock_key = 'marinos_mail_sent_' . md5( $session_id );
         $already  = get_transient( $lock_key );
-        $last_ts  = end( $logs )->created_at ?? '';
         if ( $already && $already === $last_ts ) {
-            return false;
+            return false; // Bu tam içerik daha önce gönderildi → atla.
         }
 
         $subject = '[Marinos Chatbot] Yeni Konusma — ' . date_i18n( 'd.m.Y H:i' ) . ' (' . $count . ' mesaj)';
         $body    = $this->build_body( $logs, $page_url, $ip, $count );
         $headers = [ 'Content-Type: text/plain; charset=UTF-8' ];
 
-        $to    = $this->get_recipients();
-        $ok    = wp_mail( $to, $subject, $body, $headers );
+        $to = $this->get_recipients();
 
-        // WhatsApp bildirimi (opsiyonel)
+        // wp_mail() basarisizliklarini yakalamak icin gecici hook bagla.
+        $fail_reason = null;
+        $capture = function( $wp_error ) use ( &$fail_reason ) {
+            if ( $wp_error instanceof WP_Error ) {
+                $fail_reason = $wp_error->get_error_message() . ' | data=' . wp_json_encode( $wp_error->get_error_data() );
+            }
+        };
+        add_action( 'wp_mail_failed', $capture );
+
+        $ok = wp_mail( $to, $subject, $body, $headers );
+
+        remove_action( 'wp_mail_failed', $capture );
+
+        // WhatsApp bildirimi (opsiyonel) — mail basarili olmasa da gonderelim.
         $this->maybe_send_whatsapp( $subject, $body );
 
-        set_transient( $lock_key, $last_ts, 5 * MINUTE_IN_SECONDS );
-
-        if ( ! $ok ) {
-            error_log( '[Marinos Chatbot] wp_mail() basarisiz, oturum: ' . $session_id );
+        if ( $ok ) {
+            // KILIDI YALNIZCA BASARILIYSA KOY. Aksi takdirde sonraki tetik bunu tekrar dener.
+            set_transient( $lock_key, $last_ts, 30 * MINUTE_IN_SECONDS );
+            update_option( 'marinos_chatbot_last_mail_sent', [
+                'session_id' => $session_id,
+                'at'         => current_time( 'mysql' ),
+                'count'      => $count,
+                'recipients' => $to,
+            ], false );
+        } else {
+            error_log( '[Marinos Chatbot] wp_mail() basarisiz, oturum: ' . $session_id . ' | sebep: ' . ( $fail_reason ?: 'bilinmiyor' ) );
+            // Basarisizlik sayacini artir (admin panelinde gosterilecek).
+            $fails = (array) get_option( 'marinos_chatbot_mail_failures', [] );
+            $fails[] = [
+                'session_id' => $session_id,
+                'at'         => current_time( 'mysql' ),
+                'reason'     => $fail_reason ?: 'bilinmiyor',
+            ];
+            // Son 20 başarısızlığı tut.
+            $fails = array_slice( $fails, -20 );
+            update_option( 'marinos_chatbot_mail_failures', $fails, false );
         }
+
         return $ok;
     }
 

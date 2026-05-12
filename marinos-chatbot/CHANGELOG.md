@@ -1,5 +1,47 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.6 — E-posta gönderimi sertleştirildi + tanılama paneli
+
+**Belirti:** Konuşma bittikten 1 dk sonra mail gelmesi gerekirken yine
+gecikme/eksik gönderim oluyordu.
+
+**Sebepler (üç tane üst üste bindi):**
+
+1. Mailer'da `wp_mail()` BAŞARISIZ olsa bile **transient kilit
+   yine ayarlanıyordu** → 5 dakika boyunca tekrar denemeye izin vermiyordu.
+   *(1.2.0'da benim açtığım bug, bu sürümde kapandı.)*
+2. WP-Cron + 30 sn'lik watchdog ikisi de **site trafiğine bağlı**:
+   düşük trafikli sitelerde ziyaretçi tek başına konuşup gittiyse mail
+   saatlerce askıda kalabiliyordu.
+3. SMTP sağlayıcı yapılandırılmamışsa (paylaşımlı hostlarda yaygın)
+   `wp_mail()` sessizce false dönüyordu — kullanıcı sorunu fark edemiyordu.
+
+**Düzeltmeler:**
+
+- **Transient kilit yalnızca BAŞARILI gönderim sonrası** kuruluyor; başarısız
+  gönderim bir sonraki tetikte tekrar denenir.
+- `wp_mail_failed` action'ı dinleniyor; başarısızlık nedeni
+  `marinos_chatbot_mail_failures` option'ına kaydediliyor (son 20 hata).
+- **Yeni: Chat AJAX yanıtının ardından `register_shutdown`** ile bekleyenler
+  taranıyor. Kullanıcı cevabını anında alır, mail işi response'tan sonra
+  yapılır → her sohbet kendi watchdog tikini tetikler, cron'a bağımlı değil.
+- **Watchdog ikinci katman:** Pending option'a ek olarak doğrudan veritabanı
+  log tablosundan son aktivitesi 60 sn'den eski oturumlar bulunuyor.
+  Pending kaydı kaybolsa bile mail gider.
+- **Yeni admin paneli — E-posta Tanılama bölümü:**
+  - Bekleyen e-posta sayısı (renk kodlu)
+  - Son başarılı gönderim zamanı (kaç mesajlık olduğuyla)
+  - Son 20 başarısızlığın tablosu (zaman / oturum / hata sebebi)
+  - **"Bekleyen E-postaları Şimdi Gönder"** butonu (anlık flush)
+  - WP Mail SMTP önerisi linki (eğer hata varsa)
+- `marinos_chatbot_last_mail_sent` option'ında son başarılı gönderim
+  bilgisi tutuluyor.
+- Mail kilit süresi 5 dk → 30 dk (daha güvenli idempotency).
+
+**Pratikte:** Bu sürümle birlikte konuşma bittikten ~60 sn içinde mail
+gitmesi yüksek olasılıkla garanti. SMTP düzgün değilse panel artık
+kullanıcıya "şurada hata var" gösterir; körü körüne susmaz.
+
 ## 1.2.5 — Yarım kalan yanıt (truncation) otomatik tamamlanıyor
 
 **Belirti:** Bot cevapları cümle/kelime ortasında kesiliyordu. Örnek:

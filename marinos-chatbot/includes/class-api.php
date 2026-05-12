@@ -146,9 +146,12 @@ class Marinos_Chatbot_Api {
         $whatsapp_trigger = ( stripos( $reply, 'whatsapp_yonlendir' ) !== false );
         $clean_reply      = trim( str_ireplace( 'whatsapp_yonlendir', '', $reply ) );
 
-        // Debounce e-posta planla + bekleyenleri tara.
+        // Debounce e-posta planla.
         $this->schedule_email( $session_id, $page_url, $ip );
-        $this->flush_stale_pending();
+
+        // Yanit dondukten sonra arka planda bekleyenleri kontrol etmek icin shutdown hook.
+        // Kullanici cevabini hemen alir, mail isi response'tan sonra calisir.
+        add_action( 'shutdown', [ $this, 'flush_stale_pending' ], 99 );
 
         wp_send_json_success([
             'reply'    => $clean_reply,
@@ -287,19 +290,21 @@ class Marinos_Chatbot_Api {
     }
 
     /**
-     * WP-Cron her hostta guvenilir calismadigi icin watchdog:
-     * Sure dolmus bekleyen oturumlari anlik tetikler.
+     * WP-Cron her hostta guvenilir calismadigi icin iki katmanli watchdog:
+     *  1) Pending option'undaki vadesi gecmis oturumlari gonder.
+     *  2) DB'de son mesaji >= debounce süresi kadar eski OLAN ve henüz mail kilidi
+     *     dusmemis oturumlari da tara — pending option kaybolsa bile mail gider.
      */
     public function flush_stale_pending() {
-        $pending = (array) get_option( self::PENDING_OPT, [] );
-        if ( empty( $pending ) ) return;
-
-        $now     = time();
-        $changed = false;
-
         if ( ! class_exists( 'Marinos_Chatbot_Mailer' ) ) {
             require_once dirname( __FILE__ ) . '/class-mailer.php';
         }
+
+        // --- (1) Pending option ---
+        $pending = (array) get_option( self::PENDING_OPT, [] );
+        $now     = time();
+        $changed = false;
+        $sent_sessions = [];
 
         foreach ( $pending as $sid => $info ) {
             $due = isset( $info['due_at'] ) ? (int) $info['due_at'] : 0;
@@ -307,12 +312,36 @@ class Marinos_Chatbot_Api {
                 $mailer = new Marinos_Chatbot_Mailer();
                 $mailer->notify( $sid, $info['page_url'] ?? '', $info['ip'] ?? '' );
                 unset( $pending[ $sid ] );
+                $sent_sessions[ $sid ] = true;
                 $changed = true;
             }
         }
+        if ( $changed ) update_option( self::PENDING_OPT, $pending, false );
 
-        if ( $changed ) {
-            update_option( self::PENDING_OPT, $pending, false );
+        // --- (2) DB tarama: son aktivitesi >= debounce kadar eski oturumlari kontrol et ---
+        global $wpdb;
+        $table   = $wpdb->prefix . 'marinos_chatbot_logs';
+        $cutoff  = date( 'Y-m-d H:i:s', $now - self::DEBOUNCE_SECONDS );
+        // Son 24 saatte aktivitesi olan, son mesaj 60s+ eski oturumlar.
+        $window  = date( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS );
+        $rows    = $wpdb->get_results( $wpdb->prepare(
+            "SELECT session_id, MAX(visitor_page) AS page_url, MAX(visitor_ip) AS ip, MAX(created_at) AS last_at
+             FROM $table
+             WHERE created_at >= %s
+             GROUP BY session_id
+             HAVING MAX(created_at) <= %s",
+            $window, $cutoff
+        ) );
+
+        if ( ! is_array( $rows ) ) return;
+
+        foreach ( $rows as $row ) {
+            $sid = $row->session_id;
+            if ( empty( $sid ) || isset( $sent_sessions[ $sid ] ) ) continue;
+
+            // Mailer'in kendi transient'i mukerrer gonderimi engeller; bizim icin guvenli.
+            $mailer = new Marinos_Chatbot_Mailer();
+            $mailer->notify( $sid, (string) $row->page_url, (string) $row->ip );
         }
     }
 

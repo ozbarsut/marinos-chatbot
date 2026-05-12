@@ -8,8 +8,24 @@ class Marinos_Chatbot_Admin {
         add_action( 'admin_post_marinos_test_email',      [ $this, 'send_test_email' ] );
         add_action( 'admin_post_marinos_test_whatsapp',   [ $this, 'send_test_whatsapp' ] );
         add_action( 'admin_post_marinos_delete_session',  [ $this, 'delete_session' ] );
+        add_action( 'admin_post_marinos_flush_pending',   [ $this, 'flush_pending_now' ] );
         add_action( 'admin_init',    [ $this, 'register_settings' ] );
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+    }
+
+    /**
+     * Admin tarafindan "Bekleyen e-postalari simdi gonder" butonu.
+     */
+    public function flush_pending_now() {
+        check_admin_referer( 'marinos_flush_pending' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Yetersiz yetki.' );
+        if ( ! class_exists( 'Marinos_Chatbot_Api' ) ) {
+            require_once MARINOS_CHATBOT_PATH . 'includes/class-api.php';
+        }
+        $api = new Marinos_Chatbot_Api();
+        $api->flush_stale_pending();
+        wp_redirect( admin_url( 'admin.php?page=marinos-chatbot&marinos_flushed=1' ) );
+        exit;
     }
 
     public function delete_session() {
@@ -169,6 +185,9 @@ class Marinos_Chatbot_Admin {
                     <div class="notice notice-error is-dismissible"><p>E-posta gönderilemedi. WP Mail SMTP ayarlayın.</p></div>
                 <?php endif; ?>
             <?php endif; ?>
+            <?php if ( isset( $_GET['marinos_flushed'] ) ): ?>
+                <div class="notice notice-success is-dismissible"><p>Bekleyen e-postalar işlendi.</p></div>
+            <?php endif; ?>
             <?php if ( isset( $_GET['marinos_wa_test'] ) ): ?>
                 <?php $wt = $_GET['marinos_wa_test']; $ok_c = intval($_GET['ok'] ?? 0); $fail_c = intval($_GET['fail'] ?? 0); ?>
                 <?php if ( $wt === 'ok' ): ?>
@@ -194,6 +213,66 @@ class Marinos_Chatbot_Admin {
             .mc-toggle { display:flex; align-items:center; gap:8px; font-size:13px; }
             @media(max-width:782px){.mc-grid2,.mc-grid3{grid-template-columns:1fr;}}
             </style>
+
+            <?php
+            $pending  = (array) get_option( 'marinos_chatbot_pending_emails', [] );
+            $failures = array_reverse( (array) get_option( 'marinos_chatbot_mail_failures', [] ) );
+            $last_mail = get_option( 'marinos_chatbot_last_mail_sent', null );
+            $flush_url = wp_nonce_url( admin_url( 'admin-post.php?action=marinos_flush_pending' ), 'marinos_flush_pending' );
+            ?>
+            <div class="mc-section" style="border-color:<?php echo ! empty( $failures ) ? '#dc2626' : '#10b981'; ?>;">
+                <h2 style="display:flex;align-items:center;gap:10px;">
+                    <span class="dashicons dashicons-email-alt"></span> E-posta Tanılama
+                </h2>
+                <div class="mc-grid3">
+                    <div>
+                        <p style="margin:0;font-size:12px;color:#64748b;">Bekleyen e-posta sayısı</p>
+                        <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:<?php echo count( $pending ) ? '#f59e0b' : '#10b981'; ?>;"><?php echo count( $pending ); ?></p>
+                    </div>
+                    <div>
+                        <p style="margin:0;font-size:12px;color:#64748b;">Son başarılı gönderim</p>
+                        <p style="margin:4px 0 0;font-size:14px;font-weight:600;">
+                            <?php
+                            if ( is_array( $last_mail ) && ! empty( $last_mail['at'] ) ) {
+                                echo esc_html( $last_mail['at'] );
+                                if ( ! empty( $last_mail['count'] ) ) echo ' <span style="font-weight:400;color:#64748b;">(' . intval( $last_mail['count'] ) . ' mesaj)</span>';
+                            } else {
+                                echo '<span style="color:#94a3b8;">—</span>';
+                            }
+                            ?>
+                        </p>
+                    </div>
+                    <div>
+                        <p style="margin:0;font-size:12px;color:#64748b;">Son 20 başarısızlık</p>
+                        <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:<?php echo count( $failures ) ? '#dc2626' : '#10b981'; ?>;"><?php echo count( $failures ); ?></p>
+                    </div>
+                </div>
+                <p style="margin-top:14px;">
+                    <a href="<?php echo esc_url( $flush_url ); ?>" class="button button-primary">Bekleyen E-postaları Şimdi Gönder</a>
+                    <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=marinos_test_email' ), 'marinos_test_email' ) ); ?>" class="button" style="margin-left:8px;">Test E-postası Gönder</a>
+                </p>
+                <?php if ( ! empty( $failures ) ): ?>
+                    <details style="margin-top:12px;">
+                        <summary style="cursor:pointer;font-weight:600;color:#dc2626;">Son hata detaylarını göster (<?php echo count( $failures ); ?>)</summary>
+                        <table class="widefat striped" style="margin-top:10px;font-size:12px;">
+                            <thead><tr><th>Zaman</th><th>Oturum</th><th>Hata</th></tr></thead>
+                            <tbody>
+                            <?php foreach ( array_slice( $failures, 0, 10 ) as $f ): ?>
+                                <tr>
+                                    <td><?php echo esc_html( $f['at'] ?? '' ); ?></td>
+                                    <td><code><?php echo esc_html( substr( $f['session_id'] ?? '', 0, 24 ) ); ?></code></td>
+                                    <td style="color:#b91c1c;"><?php echo esc_html( $f['reason'] ?? '' ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <p class="desc" style="margin-top:8px;">
+                            <strong>wp_mail() başarısızsa:</strong> WordPress mail yapamıyor (genelde host SMTP'i kapatmıştır).
+                            <a href="https://wordpress.org/plugins/wp-mail-smtp/" target="_blank">WP Mail SMTP</a> eklentisini kurup Gmail/Brevo/SendGrid gibi bir SMTP sağlayıcı bağlayın.
+                        </p>
+                    </details>
+                <?php endif; ?>
+            </div>
 
             <form method="post" action="options.php">
                 <?php settings_fields( 'marinos_chatbot_group' ); ?>
