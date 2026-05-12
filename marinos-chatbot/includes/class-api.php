@@ -39,6 +39,7 @@ class Marinos_Chatbot_Api {
 
         $client_key    = get_option( 'marinos_chatbot_api_key', '' );
         $system_prompt = get_option( 'marinos_chatbot_system_prompt', '' );
+        $model_name    = $this->get_model_name();
 
         if ( empty( $client_key ) ) {
             wp_send_json_error( 'API anahtarı tanımlanmamış.' );
@@ -69,9 +70,12 @@ class Marinos_Chatbot_Api {
                 $history_clean[] = [ 'role' => $role, 'text' => $text ];
             }
         }
+        $history_clean = $this->normalize_history( $history_clean );
 
         $payload = [
             'client_key'    => $client_key,
+            'model'         => $model_name,
+            'model_name'    => $model_name,
             'message'       => $user_msg,
             'history'       => $history_clean,
             'system_prompt' => $system_prompt,
@@ -269,5 +273,51 @@ class Marinos_Chatbot_Api {
         if ( ! empty( $_SERVER['HTTP_CLIENT_IP'] ) )        return sanitize_text_field( $_SERVER['HTTP_CLIENT_IP'] );
         if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) )  return sanitize_text_field( explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] )[0] );
         return sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
+    }
+
+    /**
+     * Admin panelinde secilen modeli dondurur. Proxy bu degeri okuyarak hangi
+     * Gemini modeline yonlendirecegini bilir. Onaylanan beyaz listede degilse
+     * varsayilana duser.
+     */
+    public static function allowed_models() {
+        return [
+            'gemini-3-flash'   => 'Gemini Flash 3 (Önerilen — hızlı, çok dilli)',
+            'gemini-3-pro'     => 'Gemini 3 Pro (Karmaşık akışlar)',
+            'gemini-2.5-flash' => 'Gemini Flash 2.5 (Geri uyum)',
+            'gemini-2.5-pro'   => 'Gemini 2.5 Pro',
+        ];
+    }
+
+    private function get_model_name() {
+        $model   = sanitize_text_field( (string) get_option( 'marinos_chatbot_model', 'gemini-3-flash' ) );
+        $allowed = array_keys( self::allowed_models() );
+        return in_array( $model, $allowed, true ) ? $model : 'gemini-3-flash';
+    }
+
+    /**
+     * Geçmişi normalize eder:
+     *  - Boş veya rolsüz öğeleri atar.
+     *  - Birbirinin tıpkı tekrarı olan ardışık öğeleri birleştirir.
+     *  - Son 20 mesajla sınırlandırır.
+     */
+    private function normalize_history( $history ) {
+        if ( empty( $history ) || ! is_array( $history ) ) return [];
+        $normalized = [];
+        foreach ( $history as $item ) {
+            if ( empty( $item['text'] ) || empty( $item['role'] ) ) continue;
+            $current = $this->normalize_text( $item['text'] );
+            $last    = end( $normalized );
+            if ( $last && $last['role'] === $item['role'] && $this->normalize_text( $last['text'] ) === $current ) {
+                continue;
+            }
+            $normalized[] = [ 'role' => $item['role'], 'text' => $item['text'] ];
+        }
+        return array_slice( $normalized, -20 );
+    }
+
+    private function normalize_text( $text ) {
+        $text = preg_replace( '/\s+/u', ' ', trim( (string) $text ) );
+        return function_exists( 'mb_strtolower' ) ? mb_strtolower( $text, 'UTF-8' ) : strtolower( $text );
     }
 }

@@ -1,5 +1,24 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.1 — Model seçimi geri eklendi (kayıp özellik telafisi)
+
+`a82b6a4` ve `fa1d15e` commit'leriyle eklenmiş olan **admin panel model seçici**
+ve **geçmiş normalizasyonu** özellikleri, 1.2.0 baz alınan eski zip'te yoktu —
+bu sürümde geri kazandırıldı ve genişletildi.
+
+- **Admin → Ayarlar → Genel → Model:** select kutusu geri geldi. Seçenekler:
+  - `gemini-3-flash` (önerilen)
+  - `gemini-3-pro`
+  - `gemini-2.5-flash`
+  - `gemini-2.5-pro`
+- **API isteğine `model` ve `model_name` alanları eklendi** — proxy bu değeri
+  okuyarak hangi Gemini modeline yönlendireceğini bilir.
+- **`Marinos_Chatbot_Api::allowed_models()`** statik yardımcı — proxy'nin desteklediği
+  liste değişirse buradan tek noktada güncellenebilir.
+- **`normalize_history()`:** ardışık ve aynı içerikteki mesajları birleştirir,
+  son 20'yle sınırlar. "Aynı şeyi tekrar tekrar soruyor" şikayetinin sebebi
+  buydu — çözüldü.
+
 ## 1.2.0 — Kararlılık & Çok Dil Yeniden Düzenlemesi
 
 Bu sürüm, "yarım kalan promptlar, geç gelen e-postalar, takılı kalan bot, çok dilli sorunlar"

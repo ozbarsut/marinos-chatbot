@@ -59,6 +59,7 @@ class Marinos_Chatbot_Admin {
         $settings = [
             // Genel
             'marinos_chatbot_api_key'          => 'sanitize_text_field',
+            'marinos_chatbot_model'            => 'sanitize_text_field',
             'marinos_chatbot_bot_name'         => 'sanitize_text_field',
             'marinos_chatbot_welcome_message'  => 'sanitize_textarea_field',
             'marinos_chatbot_system_prompt'    => 'sanitize_textarea_field',
@@ -113,6 +114,7 @@ class Marinos_Chatbot_Admin {
 
         // Genel
         $api_key          = get_option( 'marinos_chatbot_api_key', '' );
+        $model            = get_option( 'marinos_chatbot_model', 'gemini-3-flash' );
         $bot_name         = get_option( 'marinos_chatbot_bot_name', 'Marinos Asistan' );
         $welcome          = get_option( 'marinos_chatbot_welcome_message', 'Merhaba! Size nasıl yardımcı olabilirim?' );
         $system_prompt    = get_option( 'marinos_chatbot_system_prompt', $this->default_prompt() );
@@ -201,6 +203,17 @@ class Marinos_Chatbot_Admin {
                             <input type="password" name="marinos_chatbot_api_key" value="<?php echo esc_attr($api_key); ?>" autocomplete="off">
                             <p class="desc">marinosajans.com.tr üzerinden temin edilir.</p>
                         </div>
+                        <div class="mc-field">
+                            <label>Model</label>
+                            <select name="marinos_chatbot_model">
+                                <?php foreach ( Marinos_Chatbot_Api::allowed_models() as $val => $label ): ?>
+                                    <option value="<?php echo esc_attr($val); ?>" <?php selected($model,$val); ?>><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="desc">Çok dilli kullanım ve rezervasyon akışları için <strong>Gemini Flash 3</strong> önerilir. Proxy'nin desteklediği modellerle eşleşmeli.</p>
+                        </div>
+                    </div>
+                    <div class="mc-grid2" style="margin-top:12px;">
                         <div class="mc-field">
                             <label>Bot Adı</label>
                             <input type="text" name="marinos_chatbot_bot_name" value="<?php echo esc_attr($bot_name); ?>">
