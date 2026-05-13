@@ -4,12 +4,14 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class Marinos_Chatbot_Api {
 
     const PENDING_OPT       = 'marinos_chatbot_pending_emails';
-    const DEBOUNCE_SECONDS  = 60;
+    const DEBOUNCE_DEFAULT  = 300;   // 5 dk — gercek "sohbet bitti" isareti.
     const REQUEST_TIMEOUT   = 45;
     const REQUEST_RETRIES   = 2;
     const HISTORY_LIMIT     = 12;
     const MAX_MESSAGE_CHARS = 4000;
-    const MAX_OUTPUT_TOKENS = 2048; // Yarım cevap (truncation) kalmaması için tavan.
+    const MAX_OUTPUT_TOKENS = 4096; // Daha geniş tavan — yarım kalma riski az.
+    const WATCHDOG_BATCH    = 3;     // Tek calistirmada max kac oturum gonderelim.
+    const SCAN_WINDOW_HOURS = 6;     // DB taramasi kac saat geriye baksin.
 
     public function __construct() {
         add_action( 'wp_ajax_marinos_chat',         [ $this, 'handle_chat' ] );
@@ -95,13 +97,15 @@ class Marinos_Chatbot_Api {
                 . "\n- Yanıtında sayıyı tekrar yazarken kullanıcının formatına SAYGI duy: '400' dediğinde sen de '400' yaz, '400.000' yazma.";
         }
 
-        // Her zaman geçerli yarım-cevap önleme guardrail'i:
+        // Her zaman geçerli yarım-cevap + stil guardrail'i:
         $system_prompt = trim( $system_prompt )
-            . "\n\n[Tamamlık Kuralı]"
-            . "\n- Yanıtını ASLA yarıda bırakma."
-            . "\n- Cümle ortasında, sayıdan sonra, 've', 'veya', 'or', 'and', 'oder' gibi bağlaçlardan sonra bırakma."
-            . "\n- Her yanıt bir noktalama (.!?) ile bitmelidir."
-            . "\n- Çok uzun bir yanıt vermek yerine kısa ve TAM cümleler kur.";
+            . "\n\n[Tamamlık ve Stil Kuralı]"
+            . "\n- Yanıtını ASLA yarıda bırakma. Her yanıt bir noktalama (.!?) ile bitmelidir."
+            . "\n- Cümle ortasında, sayıdan sonra, 've/veya/or/and/oder' gibi bağlaçlardan sonra durma."
+            . "\n- KISA cümleler kullan: tercihen 1-2 cümle, en fazla 3 cümle."
+            . "\n- Birden fazla bilgi varsa madde işareti (•) veya numara ile listele, uzun paragraf yazma."
+            . "\n- Reklam/satış jargonundan kaçın; sade ve net konuş."
+            . "\n- Her yanıtın sonunda BİR sonraki adımı belirten KISA bir soru sor (kullanıcıyı akışta tut).";
 
         $payload = [
             'client_key'        => $client_key,
@@ -263,18 +267,25 @@ class Marinos_Chatbot_Api {
      * E-postayi WP-Cron araciligiyla 60 sn sonra atmak uzere zamanlar.
      * Ayrica "pending" listesine yazar (cron calismazsa watchdog isin yapar).
      */
+    public static function debounce_seconds() {
+        $min = (int) get_option( 'marinos_chatbot_mail_debounce_min', 5 );
+        $min = max( 1, min( 120, $min ) );
+        return $min * 60;
+    }
+
     private function schedule_email( $session_id, $page_url, $ip ) {
+        $debounce = self::debounce_seconds();
         $hook = 'marinos_send_conversation_email';
         $args = [ $session_id, $page_url, $ip ];
         $ts   = wp_next_scheduled( $hook, $args );
         if ( $ts ) wp_unschedule_event( $ts, $hook, $args );
-        wp_schedule_single_event( time() + self::DEBOUNCE_SECONDS, $hook, $args );
+        wp_schedule_single_event( time() + $debounce, $hook, $args );
 
         $pending = (array) get_option( self::PENDING_OPT, [] );
         $pending[ $session_id ] = [
             'page_url' => $page_url,
             'ip'       => $ip,
-            'due_at'   => time() + self::DEBOUNCE_SECONDS,
+            'due_at'   => time() + $debounce,
         ];
         update_option( self::PENDING_OPT, $pending, false );
     }
@@ -305,37 +316,46 @@ class Marinos_Chatbot_Api {
             require_once dirname( __FILE__ ) . '/class-mailer.php';
         }
 
+        $debounce = self::debounce_seconds();
+        $sent_count = 0;
+        $sent_sessions = [];
+
         // --- (1) Pending option ---
         $pending = (array) get_option( self::PENDING_OPT, [] );
         $now     = time();
         $changed = false;
-        $sent_sessions = [];
 
         foreach ( $pending as $sid => $info ) {
+            if ( $sent_count >= self::WATCHDOG_BATCH ) break;
             $due = isset( $info['due_at'] ) ? (int) $info['due_at'] : 0;
             if ( $due > 0 && $due <= $now ) {
                 $mailer = new Marinos_Chatbot_Mailer();
-                $mailer->notify( $sid, $info['page_url'] ?? '', $info['ip'] ?? '' );
+                $result = $mailer->notify( $sid, $info['page_url'] ?? '', $info['ip'] ?? '' );
                 unset( $pending[ $sid ] );
                 $sent_sessions[ $sid ] = true;
                 $changed = true;
+                if ( $result !== false ) $sent_count++; // skipped (transient lock) ise sayma
             }
         }
         if ( $changed ) update_option( self::PENDING_OPT, $pending, false );
 
-        // --- (2) DB tarama: son aktivitesi >= debounce kadar eski oturumlari kontrol et ---
+        if ( $sent_count >= self::WATCHDOG_BATCH ) return;
+
+        // --- (2) DB tarama: son aktivitesi debounce kadar eski oturumlar ---
         global $wpdb;
         $table   = $wpdb->prefix . 'marinos_chatbot_logs';
-        $cutoff  = date( 'Y-m-d H:i:s', $now - self::DEBOUNCE_SECONDS );
-        // Son 24 saatte aktivitesi olan, son mesaj 60s+ eski oturumlar.
-        $window  = date( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS );
+        $cutoff  = date( 'Y-m-d H:i:s', $now - $debounce );
+        $window  = date( 'Y-m-d H:i:s', $now - ( self::SCAN_WINDOW_HOURS * HOUR_IN_SECONDS ) );
+        $limit   = self::WATCHDOG_BATCH - $sent_count;
         $rows    = $wpdb->get_results( $wpdb->prepare(
             "SELECT session_id, MAX(visitor_page) AS page_url, MAX(visitor_ip) AS ip, MAX(created_at) AS last_at
              FROM $table
              WHERE created_at >= %s
              GROUP BY session_id
-             HAVING MAX(created_at) <= %s",
-            $window, $cutoff
+             HAVING MAX(created_at) <= %s
+             ORDER BY last_at ASC
+             LIMIT %d",
+            $window, $cutoff, $limit
         ) );
 
         if ( ! is_array( $rows ) ) return;
@@ -343,8 +363,7 @@ class Marinos_Chatbot_Api {
         foreach ( $rows as $row ) {
             $sid = $row->session_id;
             if ( empty( $sid ) || isset( $sent_sessions[ $sid ] ) ) continue;
-
-            // Mailer'in kendi transient'i mukerrer gonderimi engeller; bizim icin guvenli.
+            // Mailer'in idempotency mantigi mukerrer gonderimi engeller; bizim icin guvenli.
             $mailer = new Marinos_Chatbot_Mailer();
             $mailer->notify( $sid, (string) $row->page_url, (string) $row->ip );
         }
@@ -363,10 +382,10 @@ class Marinos_Chatbot_Api {
      */
     public static function allowed_models() {
         return [
-            'gemini-3-flash'   => 'Gemini Flash 3 (Önerilen — hızlı, çok dilli)',
-            'gemini-3-pro'     => 'Gemini 3 Pro (Karmaşık akışlar)',
-            'gemini-2.5-flash' => 'Gemini Flash 2.5 (Geri uyum)',
-            'gemini-2.5-pro'   => 'Gemini 2.5 Pro',
+            'gemini-3-pro'     => 'Gemini 3 Pro (En güçlü — karmaşık akışlar, satış sohbeti)',
+            'gemini-3-flash'   => 'Gemini 3 Flash (Önerilen — hızlı, çok dilli)',
+            'gemini-2.5-pro'   => 'Gemini 2.5 Pro (Yedek)',
+            'gemini-2.5-flash' => 'Gemini 2.5 Flash (Geri uyum)',
         ];
     }
 

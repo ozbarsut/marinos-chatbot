@@ -95,6 +95,8 @@ class Marinos_Chatbot_Admin {
             'marinos_chatbot_quick_replies'    => 'sanitize_textarea_field',
             'marinos_chatbot_session_ttl'      => 'absint',
             'marinos_chatbot_clear_on_close'   => 'sanitize_text_field',
+            'marinos_chatbot_mail_debounce_min'    => 'absint',
+            'marinos_chatbot_mail_session_lock_min' => 'absint',
             // Görünüm — Renkler
             'marinos_chatbot_primary_color'    => 'sanitize_hex_color',
             'marinos_chatbot_header_color'     => 'sanitize_hex_color',
@@ -152,6 +154,8 @@ class Marinos_Chatbot_Admin {
         $quick_replies    = get_option( 'marinos_chatbot_quick_replies', '' );
         $session_ttl      = (int) get_option( 'marinos_chatbot_session_ttl', 30 );
         $clear_on_close   = get_option( 'marinos_chatbot_clear_on_close', '0' );
+        $mail_debounce    = (int) get_option( 'marinos_chatbot_mail_debounce_min', 5 );
+        $mail_session_lock = (int) get_option( 'marinos_chatbot_mail_session_lock_min', 60 );
         // Renkler
         $primary_color    = get_option( 'marinos_chatbot_primary_color', '#1a73e8' );
         $header_color     = get_option( 'marinos_chatbot_header_color', '' );
@@ -251,6 +255,29 @@ class Marinos_Chatbot_Admin {
                     <a href="<?php echo esc_url( $flush_url ); ?>" class="button button-primary">Bekleyen E-postaları Şimdi Gönder</a>
                     <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=marinos_test_email' ), 'marinos_test_email' ) ); ?>" class="button" style="margin-left:8px;">Test E-postası Gönder</a>
                 </p>
+                <hr style="margin:18px 0;border:none;border-top:1px solid #f1f5f9;">
+                <p style="font-weight:600;font-size:13px;margin:0 0 12px;color:#374151;">Gönderim Sıklığı Ayarları</p>
+                <div class="mc-grid2">
+                    <div class="mc-field">
+                        <label>Sohbet sonu bekleme süresi (dakika)</label>
+                        <select name="marinos_chatbot_mail_debounce_min">
+                            <?php foreach ( [1, 2, 3, 5, 10, 15] as $opt ) {
+                                printf( '<option value="%d" %s>%d dk</option>', $opt, selected( $mail_debounce, $opt, false ), $opt );
+                            } ?>
+                        </select>
+                        <p class="desc">Bir oturumda son mesajdan kaç dakika sessizlik sonra mail tetiklensin. <strong>Önerilen: 5 dk</strong> (gerçekten "sohbet bitti" sayılabilmesi için).</p>
+                    </div>
+                    <div class="mc-field">
+                        <label>Oturum başı mail kilidi (dakika)</label>
+                        <select name="marinos_chatbot_mail_session_lock_min">
+                            <?php foreach ( [15, 30, 60, 120, 240, 720, 1440] as $opt ) {
+                                $hr = $opt >= 60 ? ' (' . round( $opt / 60, 1 ) . ' sa)' : '';
+                                printf( '<option value="%d" %s>%d dk%s</option>', $opt, selected( $mail_session_lock, $opt, false ), $opt, esc_html( $hr ) );
+                            } ?>
+                        </select>
+                        <p class="desc">Bir oturum için bir mail gittikten sonra kaç dakika boyunca yeni mail GÖNDERMESİN. Kullanıcı sohbete devam ederse yeni mesajlar bir sonraki tetiklemede toplu olarak iletilir. <strong>Önerilen: 60 dk.</strong></p>
+                    </div>
+                </div>
                 <?php if ( ! empty( $failures ) ): ?>
                     <details style="margin-top:12px;">
                         <summary style="cursor:pointer;font-weight:600;color:#dc2626;">Son hata detaylarını göster (<?php echo count( $failures ); ?>)</summary>

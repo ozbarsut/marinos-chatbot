@@ -33,7 +33,20 @@ class Marinos_Chatbot_Mailer {
         $count  = count( $logs );
         if ( $count === 0 ) return false;
 
-        // Aynı konuşma + aynı son mesaj kombinasyonu için kilit.
+        // ---- ÖNEMLİ: "1 oturum başına 1 mail / X dakika" koruması ----
+        // Aynı oturum için son maildan bu yana yeterli süre geçmediyse atla.
+        // Bu, kullanıcının sohbete devam etmesi durumunda 6-7 ardışık mail atılmasını engeller.
+        // Bekleyen yeni mesajlar bir sonraki tetiklemede toplu olarak gider.
+        $session_lock_min = (int) get_option( 'marinos_chatbot_mail_session_lock_min', 60 );
+        $session_lock_min = max( 5, min( 1440, $session_lock_min ) );
+        $session_lock_key = 'marinos_mail_session_' . md5( $session_id );
+        $session_lock     = get_transient( $session_lock_key );
+        if ( $session_lock ) {
+            // Daha önce başarıyla mail gitti; bu oturum için süre dolana kadar yeni mail YOK.
+            return false;
+        }
+
+        // Aynı konuşma + aynı son mesaj kombinasyonu için kilit (content-hash idempotency).
         $last_ts  = isset( $logs[ $count - 1 ]->created_at ) ? (string) $logs[ $count - 1 ]->created_at : '';
         $lock_key = 'marinos_mail_sent_' . md5( $session_id );
         $already  = get_transient( $lock_key );
@@ -64,8 +77,10 @@ class Marinos_Chatbot_Mailer {
         $this->maybe_send_whatsapp( $subject, $body );
 
         if ( $ok ) {
-            // KILIDI YALNIZCA BASARILIYSA KOY. Aksi takdirde sonraki tetik bunu tekrar dener.
+            // 1) Content-hash kilit — aynı son mesajla tekrar denenmesin.
             set_transient( $lock_key, $last_ts, 30 * MINUTE_IN_SECONDS );
+            // 2) Oturum başı kilit — bu oturum için en az X dk yeni mail YOK.
+            set_transient( $session_lock_key, time(), $session_lock_min * MINUTE_IN_SECONDS );
             update_option( 'marinos_chatbot_last_mail_sent', [
                 'session_id' => $session_id,
                 'at'         => current_time( 'mysql' ),

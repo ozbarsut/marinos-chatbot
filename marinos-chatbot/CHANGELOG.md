@@ -1,5 +1,47 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.8 — "6-7 ardışık mail" sorunu + kısa cümle stili + Gemini 3 Pro ön sıraya
+
+**Belirti:** Sohbet bittikten sonra mail anında gelmiyor, **biriktirip
+6-7 mail birden** atıyordu. Bir oturum için 1 mail bekleniyor.
+
+**Kök sebep:** 1.2.6 mailer'da idempotency kilidi son mesaj
+timestamp'ine bakıyordu. Kullanıcı sohbete devam ederse → her yeni
+mesajdan sonra 60s sessizlik penceresi tetikleniyor → her sessizlik
+penceresi YENİ bir mail üretiyordu. 5 dk içinde 6-7 sessizlik penceresi
+oluşursa 6-7 mail gidiyordu.
+
+**Düzeltme — 4 katman:**
+
+1. **Debounce 60s → 5 dk (varsayılan):** Kullanıcı 5 dk konuşmadıysa
+   gerçekten sohbet bitmiş sayılıyor. Aktif sohbet süresince mail
+   tetiklenmiyor.
+2. **Oturum başı mail kilidi:** Bir oturum için bir kez mail gittikten
+   sonra **60 dk boyunca yeni mail YOK** (varsayılan). Kullanıcı sohbete
+   devam etse de bir sonraki tetikte yeni mesajlar TOPLU olarak iletilir.
+3. **Watchdog throttle:** Tek bir watchdog çalışmasında en fazla 3
+   oturum işleniyor. Birikmiş geçmiş oturumlar bir çırpıda yağmıyor.
+4. **DB tarama penceresi 24 saat → 6 saat:** Çok eski oturumlar bir daha
+   gönderilmek üzere tetiklenmiyor.
+
+**Yeni admin ayarları** (E-posta Tanılama bloğunun altında):
+- Sohbet sonu bekleme süresi: 1/2/3/5/10/15 dk (varsayılan **5 dk**)
+- Oturum başı mail kilidi: 15/30/60/120/240/720/1440 dk (varsayılan **60 dk**)
+
+**Diğer iyileştirmeler bu sürümde:**
+
+- **Token tavanı 2048 → 4096:** Daha geniş cevap alanı; yarım kalma
+  riski daha da azalıyor.
+- **Sistem prompt'a Stil Kuralı:**
+  - KISA cümleler (tercihen 1-2, en fazla 3 cümle)
+  - Birden fazla bilgi varsa madde işareti / numara, paragraf yazma
+  - Reklam jargonundan kaçın
+  - Her yanıt sonunda kısa bir takip sorusu (akışta tut)
+- **Gemini 3 Pro listede ön sıraya çıktı,** label'ı netleşti:
+  "Gemini 3 Pro (En güçlü — karmaşık akışlar, satış sohbeti)" — en üstte.
+  Eski liste: Flash 3, 3 Pro, Flash 2.5, 2.5 Pro
+  Yeni liste: **3 Pro, 3 Flash, 2.5 Pro, 2.5 Flash**
+
 ## 1.2.7 — "400 yazdım, 400.000 anladı" sayı genişletme hatası
 
 **Belirti:** Kullanıcı "kaç ürün?" sorusuna `400` yazıyor; bot bunu
