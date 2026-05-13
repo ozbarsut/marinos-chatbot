@@ -1,5 +1,31 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.9 — Mail davranışı: epizot başına 1 mail (kullanıcı netleştirmesi)
+
+Kullanıcının istediği davranışı net biçimde ifade etmesi: *"Sohbet ediyor, 1 dk
+sessizleşince mail gelsin; tekrar konuşup yine 1 dk sessizleşirse yine yeni mail
+gelsin."*
+
+1.2.8'in agresif (5 dk debounce + 60 dk session-lock) varsayılanları bu
+senaryoyu engelliyordu. Bu sürümde:
+
+- **Debounce varsayılanı 5 dk → 1 dk** (kullanıcı isteği)
+- **Aynı oturum için minimum mail aralığı (rate-limit) varsayılanı 60 dk → 0 dk (Kapalı)**
+  - `0 dk` artık geçerli bir değer; mailer'da transient mantığı bu durumda
+    tamamen atlanır.
+  - Yani **her sessizlik penceresi yeni mail üretir.**
+- Admin select kutusunda "Kapalı (sınırsız)" seçeneği var.
+
+Aksiyon korunan iki idempotency:
+1. **İçerik idempotency:** Aynı son-mesaj timestamp'iyle mail atılmışsa tekrar atılmaz.
+2. **Watchdog throttle:** Tek tetikte max 3 oturum (eski oturum birikmesini önler).
+
+Bu sayede istenen akış garanti:
+- T+0..T+30: konuşma
+- T+90: 1 dk sessizlik → mail #1
+- T+120: kullanıcı tekrar yazıyor
+- T+180: yine 1 dk sessizlik → mail #2 (tüm konuşmayı içerir)
+
 ## 1.2.8 — "6-7 ardışık mail" sorunu + kısa cümle stili + Gemini 3 Pro ön sıraya
 
 **Belirti:** Sohbet bittikten sonra mail anında gelmiyor, **biriktirip

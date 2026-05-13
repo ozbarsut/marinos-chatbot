@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class Marinos_Chatbot_Api {
 
     const PENDING_OPT       = 'marinos_chatbot_pending_emails';
-    const DEBOUNCE_DEFAULT  = 300;   // 5 dk — gercek "sohbet bitti" isareti.
+    const DEBOUNCE_DEFAULT  = 60;    // 1 dk — kullanicinin istegi: "1 dk sessizlik = mail tetigi".
     const REQUEST_TIMEOUT   = 45;
     const REQUEST_RETRIES   = 2;
     const HISTORY_LIMIT     = 12;
@@ -268,7 +268,7 @@ class Marinos_Chatbot_Api {
      * Ayrica "pending" listesine yazar (cron calismazsa watchdog isin yapar).
      */
     public static function debounce_seconds() {
-        $min = (int) get_option( 'marinos_chatbot_mail_debounce_min', 5 );
+        $min = (int) get_option( 'marinos_chatbot_mail_debounce_min', 1 );
         $min = max( 1, min( 120, $min ) );
         return $min * 60;
     }
