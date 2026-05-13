@@ -154,7 +154,7 @@ class Marinos_Chatbot_Admin {
         $quick_replies    = get_option( 'marinos_chatbot_quick_replies', '' );
         $session_ttl      = (int) get_option( 'marinos_chatbot_session_ttl', 30 );
         $clear_on_close   = get_option( 'marinos_chatbot_clear_on_close', '0' );
-        $mail_debounce    = (int) get_option( 'marinos_chatbot_mail_debounce_min', 1 );
+        $mail_debounce    = (int) get_option( 'marinos_chatbot_mail_debounce_min', 2 );
         $mail_session_lock = (int) get_option( 'marinos_chatbot_mail_session_lock_min', 0 );
         // Renkler
         $primary_color    = get_option( 'marinos_chatbot_primary_color', '#1a73e8' );
@@ -266,10 +266,10 @@ class Marinos_Chatbot_Admin {
                             } ?>
                         </select>
                         <p class="desc">
-                            Sohbette son mesajdan kaç dakika sessizlik sonra mail tetiklensin.
-                            Kullanıcı sohbete dönüp tekrar yazarsa, bir sonraki sessizlik penceresinde
-                            <strong>yeni mail</strong> gider (içinde tüm konuşma olur).
-                            <strong>Önerilen: 1 dk.</strong>
+                            Sohbette son mesajdan bu kadar süre <strong>yeni yazışma olmazsa</strong>
+                            otomatik mail tetiklenir. Kullanıcı sohbete dönüp tekrar yazarsa,
+                            bir sonraki sessizlik penceresinde içinde tüm konuşma olan <strong>yeni mail</strong> gider.
+                            <strong>Önerilen: 2 dk.</strong>
                         </p>
                     </div>
                     <div class="mc-field">

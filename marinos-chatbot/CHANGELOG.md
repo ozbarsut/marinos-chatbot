@@ -1,5 +1,16 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.2.10 — Varsayılan sessizlik süresi 2 dakika
+
+Kullanıcı kesin isteğini netleştirdi:
+> "Konuşma 2 dakika devam etmediği zaman otomatik mail atsın, başka bir şeye gerek yok."
+
+- **Debounce varsayılanı 1 dk → 2 dk**
+- Diğer her şey aynı: rate-limit kapalı, watchdog throttle 3 oturum,
+  içerik idempotency korunuyor.
+- Admin paneldeki açıklama metni "2 dk" önerisi gösterecek şekilde
+  güncellendi.
+
 ## 1.2.9 — Mail davranışı: epizot başına 1 mail (kullanıcı netleştirmesi)
 
 Kullanıcının istediği davranışı net biçimde ifade etmesi: *"Sohbet ediyor, 1 dk
