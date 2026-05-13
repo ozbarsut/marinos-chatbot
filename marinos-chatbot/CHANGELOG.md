@@ -1,5 +1,41 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.3.0 — Tarayıcı tarafı idle timer (mail tetiğinin gerçek çözümü)
+
+**Kullanıcının netleştirdiği şikayet:** "1 dk'ya ayarlamıştık, doğru çalışmıyordu."
+
+**Gerçek sebep teşhisi:** Önceki tüm tetik mekanizmaları (WP-Cron,
+admin-init watchdog, sayfa kapanışı sendBeacon, chat shutdown hook)
+HEPSI ya **site trafiğine** ya **kullanıcının sayfayı KAPATMASINA**
+bağlıydı. Kullanıcı son mesajı yazdıktan sonra sayfayı **açık bırakıp
+idle** kaldığında hiçbiri tetiklenmiyordu. Düşük trafikli sitelerde
+mail saatlerce/günlerce bekleyebiliyordu.
+
+**Çözüm:** Tarayıcı tarafında JavaScript idle timer. Son mesajdan
+itibaren `mail_debounce_min` (varsayılan 2 dk) süre sonra JS otomatik
+olarak `wp_ajax_marinos_flush` endpoint'ini tetikler.
+
+**Sözleşme:**
+
+- **Kullanıcı yazıyor (input event):** Timer sıfırlanır.
+- **Kullanıcı mesaj gönderir:** Timer geçici olarak durdurulur (bot
+  cevabı bekleniyor).
+- **Bot cevap verir:** Timer baştan başlar.
+- **2 dk sessizlik:** JS `flush` çağırır → backend `Mailer::notify()`
+  çağırır → mail gider.
+- **Sayfa kapanır:** sendBeacon mevcut (yedek).
+- **Tarayıcı kapatılır / cihaz kapatılır:** WP-Cron + watchdog'un
+  fallback'i devreye girer (site'ye biri geldiğinde mail gönderilir).
+
+Bu sayede en kötü durumda bile (cron yok, beacon yok) **tarayıcı
+sayma yapıyorsa mail mutlaka 2 dk içinde tetiklenir.**
+
+Diğer şeyler 1.2.10'daki gibi:
+- Debounce varsayılanı 2 dk (admin'den 1/2/3/5/10/15 seçilebilir)
+- Aynı oturum rate-limit: Kapalı
+- Watchdog throttle: 3 oturum
+- İçerik idempotency korunuyor
+
 ## 1.2.10 — Varsayılan sessizlik süresi 2 dakika
 
 Kullanıcı kesin isteğini netleştirdi:

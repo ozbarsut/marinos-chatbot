@@ -6,6 +6,10 @@
     // Konuşmanın localStorage'da kalma süresi (dk -> ms). Admin'den ayarlanır, varsayılan 30 dk.
     var SESSION_TTL_MS = Math.max(1, parseInt(cfg.session_ttl, 10) || 30) * 60 * 1000;
     var CLEAR_ON_CLOSE = cfg.clear_on_close === '1' || cfg.clear_on_close === 1;
+    // Mail tetiklemesi için tarayıcı tarafı idle timer süresi (sn -> ms).
+    var MAIL_IDLE_MS   = Math.max(30, parseInt(cfg.mail_idle_sec, 10) || 120) * 1000;
+    var mailIdleTimer  = null;
+    var mailIdleFired  = false;
     var I18N           = cfg.i18n || {};
     var LANG           = detectLang();
     var T              = I18N[LANG] || I18N.tr || {};
@@ -174,6 +178,7 @@
         $('#mc-icon-open, #mc-avatar-img-toggle').show();
         $('#mc-icon-close, #mc-icon-close-img').hide();
         clearInactivityTimer();
+        clearMailIdleTimer();
         // Kapatınca da bekleyen e-postayı tetikle.
         flushBeacon();
         // Admin "kapatıldığında sil" demişse localStorage'ı temizle.
@@ -242,6 +247,45 @@
     }
 
     // =============================================
+    // Mail Idle Timer — sohbette X saniye yeni mesaj olmazsa
+    // tarayıcı tarafından sunucuya "flush" tetikle.
+    // Bu, WP-Cron veya sayfa kapanma beacon'ından bağımsız çalışır.
+    // =============================================
+    function resetMailIdleTimer() {
+        if (mailIdleTimer) { clearTimeout(mailIdleTimer); mailIdleTimer = null; }
+        if (msgCount === 0) return; // Hiç mesaj yoksa anlamı yok.
+        mailIdleFired = false;
+        mailIdleTimer = setTimeout(function () {
+            if (isWaiting) {
+                // Cevap beklenirken tetiklemeyelim, cevap gelince tekrar başlatılır.
+                return;
+            }
+            mailIdleFired = true;
+            triggerMailFlush();
+        }, MAIL_IDLE_MS);
+    }
+
+    function clearMailIdleTimer() {
+        if (mailIdleTimer) { clearTimeout(mailIdleTimer); mailIdleTimer = null; }
+    }
+
+    function triggerMailFlush() {
+        if (!sessionId || msgCount === 0) return;
+        try {
+            $.ajax({
+                url: cfg.ajax_url,
+                method: 'POST',
+                data: {
+                    action:     'marinos_flush',
+                    nonce:      cfg.nonce,
+                    session_id: sessionId,
+                    page_url:   cfg.page_url || ''
+                }
+            });
+        } catch (e) {}
+    }
+
+    // =============================================
     // Input
     // =============================================
     var lastSendAt = 0;
@@ -261,6 +305,8 @@
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 100) + 'px';
         resetInactivityTimer();
+        // Kullanıcı yazıyor → idle timer'ı sıfırla; aktif olduğu sürece mail gönderme.
+        clearMailIdleTimer();
     });
 
     // =============================================
@@ -417,6 +463,8 @@
         savedMsgs.push({ role: 'bot', text: text });
         saveSession(sessionId, history, savedMsgs);
         scrollBottom();
+        // Bot cevabı geldi → idle sayacı baştan başlasın.
+        resetMailIdleTimer();
     }
 
     function appendUserMessage(text) {
@@ -424,6 +472,8 @@
         savedMsgs.push({ role: 'user', text: text });
         saveSession(sessionId, history, savedMsgs);
         scrollBottom();
+        // Kullanıcı yazdı → bot cevabı gelene kadar tetiklenmesin diye timer'ı temizle.
+        clearMailIdleTimer();
     }
 
     function renderBotMsg(text) {
