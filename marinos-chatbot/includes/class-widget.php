@@ -36,7 +36,7 @@ class Marinos_Chatbot_Widget {
             'i18n'            => $this->i18n_strings(),
             'session_ttl'     => max( 1, (int) get_option( 'marinos_chatbot_session_ttl', 30 ) ),
             'clear_on_close'  => get_option( 'marinos_chatbot_clear_on_close', '0' ),
-            'mail_idle_sec'   => max( 30, 60 * (int) get_option( 'marinos_chatbot_mail_debounce_min', 2 ) ),
+            'mail_idle_sec'   => max( 30, 60 * (int) get_option( 'marinos_chatbot_mail_debounce_min', 1 ) ),
             'session_key'     => 'mc_session_' . md5( home_url() ), // Siteye özgü localStorage anahtarı
         ] );
     }

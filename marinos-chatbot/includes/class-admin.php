@@ -154,8 +154,13 @@ class Marinos_Chatbot_Admin {
         $quick_replies    = get_option( 'marinos_chatbot_quick_replies', '' );
         $session_ttl      = (int) get_option( 'marinos_chatbot_session_ttl', 30 );
         $clear_on_close   = get_option( 'marinos_chatbot_clear_on_close', '0' );
-        $mail_debounce    = (int) get_option( 'marinos_chatbot_mail_debounce_min', 2 );
-        $mail_session_lock = (int) get_option( 'marinos_chatbot_mail_session_lock_min', 0 );
+        $mail_debounce    = (int) get_option( 'marinos_chatbot_mail_debounce_min', 1 );
+        // Rate-limit alani 1.3.1'de UI'dan kaldirildi. Eski kurulumlardan kalan
+        // sifirdan farkli degerleri tek seferlik temizleyelim ki "Kapalı"da kalsın.
+        $existing_lock = get_option( 'marinos_chatbot_mail_session_lock_min', null );
+        if ( $existing_lock !== null && (int) $existing_lock !== 0 ) {
+            update_option( 'marinos_chatbot_mail_session_lock_min', 0, false );
+        }
         // Renkler
         $primary_color    = get_option( 'marinos_chatbot_primary_color', '#1a73e8' );
         $header_color     = get_option( 'marinos_chatbot_header_color', '' );
@@ -256,37 +261,17 @@ class Marinos_Chatbot_Admin {
                     <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=marinos_test_email' ), 'marinos_test_email' ) ); ?>" class="button" style="margin-left:8px;">Test E-postası Gönder</a>
                 </p>
                 <hr style="margin:18px 0;border:none;border-top:1px solid #f1f5f9;">
-                <p style="font-weight:600;font-size:13px;margin:0 0 12px;color:#374151;">Gönderim Sıklığı Ayarları</p>
-                <div class="mc-grid2">
-                    <div class="mc-field">
-                        <label>Sohbet sonu bekleme süresi (dakika)</label>
-                        <select name="marinos_chatbot_mail_debounce_min">
-                            <?php foreach ( [1, 2, 3, 5, 10, 15] as $opt ) {
-                                printf( '<option value="%d" %s>%d dk</option>', $opt, selected( $mail_debounce, $opt, false ), $opt );
-                            } ?>
-                        </select>
-                        <p class="desc">
-                            Sohbette son mesajdan bu kadar süre <strong>yeni yazışma olmazsa</strong>
-                            otomatik mail tetiklenir. Kullanıcı sohbete dönüp tekrar yazarsa,
-                            bir sonraki sessizlik penceresinde içinde tüm konuşma olan <strong>yeni mail</strong> gider.
-                            <strong>Önerilen: 2 dk.</strong>
-                        </p>
-                    </div>
-                    <div class="mc-field">
-                        <label>Aynı oturum için minimum mail aralığı (rate-limit)</label>
-                        <select name="marinos_chatbot_mail_session_lock_min">
-                            <?php foreach ( [0, 1, 2, 5, 15, 30, 60, 120] as $opt ) {
-                                $label = $opt === 0 ? 'Kapalı (sınırsız)' : ( $opt >= 60 ? $opt . ' dk (' . round( $opt / 60, 1 ) . ' sa)' : $opt . ' dk' );
-                                printf( '<option value="%d" %s>%s</option>', $opt, selected( $mail_session_lock, $opt, false ), esc_html( $label ) );
-                            } ?>
-                        </select>
-                        <p class="desc">
-                            Bir oturum için iki mail arasındaki minimum süre.
-                            <strong>0 = Kapalı:</strong> Her sessizlik penceresinde yeni mail gelir.
-                            <strong>5 dk:</strong> Sohbet çok hareketliyse aynı oturumdan 5 dk içinde 2. mail gelmez.
-                            Senaryonuza göre <strong>"Kapalı"</strong> önerilir.
-                        </p>
-                    </div>
+                <div class="mc-field" style="max-width:420px;">
+                    <label><strong>Sohbet sonu bekleme süresi</strong></label>
+                    <select name="marinos_chatbot_mail_debounce_min">
+                        <?php foreach ( [1, 2, 3, 5, 10, 15] as $opt ) {
+                            printf( '<option value="%d" %s>%d dakika</option>', $opt, selected( $mail_debounce, $opt, false ), $opt );
+                        } ?>
+                    </select>
+                    <p class="desc">
+                        Sohbette bu süre boyunca <strong>yeni yazışma olmazsa</strong> otomatik mail tetiklenir.
+                        Kullanıcı tekrar yazışırsa yine bir sonraki sessizlikte yeni mail gider.
+                    </p>
                 </div>
                 <?php if ( ! empty( $failures ) ): ?>
                     <details style="margin-top:12px;">

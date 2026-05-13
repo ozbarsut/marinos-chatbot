@@ -1,5 +1,24 @@
 # Marinos Chatbot — Değişiklik Geçmişi (CHANGELOG)
 
+## 1.3.1 — Mail UI sadeleştirildi: tek alan, varsayılan 1 dk
+
+Kullanıcı şikayeti:
+> "Konuşma 1 dk devam etmedikten sonra mail tetiklensin. Tekrar olursa 2.
+> mail gelir, sorun değil. Çok basit bir mantık, ekstra seçeneklere gerek yok."
+
+**Değişiklikler:**
+
+- **Debounce varsayılanı 2 dk → 1 dk.**
+- **"Aynı oturum için minimum mail aralığı (rate-limit)" alanı UI'dan kaldırıldı.**
+  - Option backend'de duruyor (`marinos_chatbot_mail_session_lock_min`)
+  - Varsayılan: 0 (Kapalı)
+  - 1.3.1 migration: yükleme anında eski yüksek değerler sıfırlanır.
+- Admin panelde **tek alan kaldı**: "Sohbet sonu bekleme süresi" (1/2/3/5/10/15 dk).
+- Açıklama metni iki satıra inecek şekilde sadeleştirildi.
+
+**Sonuç:** 1.3.0'da eklenen frontend idle timer + 1 dk varsayılan + tek alan UI =
+istenen davranış garantili. Cron'a, beacon'a, başka site trafiğine bağımlı değil.
+
 ## 1.3.0 — Tarayıcı tarafı idle timer (mail tetiğinin gerçek çözümü)
 
 **Kullanıcının netleştirdiği şikayet:** "1 dk'ya ayarlamıştık, doğru çalışmıyordu."
